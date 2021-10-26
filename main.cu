@@ -1,12 +1,16 @@
+#include "cub-1.8.0/cub/cub.cuh"
 #include <stdio.h>
 #include <stdlib.h>
 //#include "kernels.cu.h"
-#include "cub.cuh"
 #include "helper.cu.h"
 
+//To pass on function name
+typedef double (*functiontype)(uint32_t*, uint32_t*, const uint64_t);
+
+
 // Validation - use sequential sorting
-// Generate data
-// Timing
+// Generate data -Done
+// Timing - done
 // kernel calling function - call kernels
 // main function
 // remember to free data
@@ -14,21 +18,31 @@
 // Generate data
 /**
  * size             is the size of the data array
- * random_array     is the data array holding random data
+ * rand_in_arr      is the input array holding random data
  */
-int* make_random_array(uint32_t size) {
-    int* random_array = malloc(sizeof(int32_t) * size); //Skal vi i stedet bruge CUDA malloc?
+unsigned int* make_random_array(uint32_t size) {
+    uint32_t* rand_in_arr = (uint32_t*) malloc(size * sizeof(uint32_t));
     for(uint32_t i = 0; i < size; i++) {
-        random_array[i] = rand();
+        rand_in_arr[i] = rand();
     }
-    return random_array;
+    return rand_in_arr;
+}
+
+bool validate(uint32_t* output_array, uint32_t num_elems) {
+    for(uint32_t i = 0; i < num_elems-1; i++){
+        if (output_array[i] > output_array[i+1]){
+            printf("INVALID RESULT for i:%d, (output[i-1]=%d > output[i]=%d)\n", i, output_array[i-1], output_array[i]);
+            return false;
+        }
+    }
+    return true;
 }
 
 // Execute CUB-library radix sort on input_array.
 // This function is copied from the example code in CUBcode
-double sortRedByKeyCUB( uint32_t* data_keys_in
-                      , uint32_t* data_keys_out
-                      , const uint64_t N
+double sortRedByKeyCUB( uint32_t* input_array
+                      , uint32_t* output_array
+                      , const uint64_t num_elem
 ) {
     int beg_bit = 0;
     int end_bit = 32;
@@ -38,8 +52,8 @@ double sortRedByKeyCUB( uint32_t* data_keys_in
 
     { // sort prelude
         cub::DeviceRadixSort::SortKeys( tmp_sort_mem, tmp_sort_len
-                                      , data_keys_in, data_keys_out
-                                      , N,   beg_bit,  end_bit
+                                      , input_array, output_array
+                                      , num_elem,   beg_bit,  end_bit
                                       );
         cudaMalloc(&tmp_sort_mem, tmp_sort_len);
     }
@@ -47,8 +61,8 @@ double sortRedByKeyCUB( uint32_t* data_keys_in
 
     { // one dry run
         cub::DeviceRadixSort::SortKeys( tmp_sort_mem, tmp_sort_len
-                                      , data_keys_in, data_keys_out
-                                      , N,   beg_bit,  end_bit
+                                      , input_array, output_array
+                                      , num_elem,   beg_bit,  end_bit
                                       );
         cudaDeviceSynchronize();
     }
@@ -61,8 +75,8 @@ double sortRedByKeyCUB( uint32_t* data_keys_in
 
     for(int k=0; k<GPU_RUNS; k++) {
         cub::DeviceRadixSort::SortKeys( tmp_sort_mem, tmp_sort_len
-                                      , data_keys_in, data_keys_out
-                                      , N,   beg_bit,  end_bit
+                                      , input_array, output_array
+                                      , num_elem,   beg_bit,  end_bit
                                       );
     }
     cudaDeviceSynchronize();
@@ -77,59 +91,90 @@ double sortRedByKeyCUB( uint32_t* data_keys_in
     return elapsed;
 }
 
+//Execute the sorting algorithm on kernels
+double sortByKernel(uint32_t* input_array
+                  , uint32_t* output_array
+                  , const uint64_t num_elem){
+    double elapsed = num_elem;
+    return elapsed;
+}
+
+// This function allocates cuda memory for either the CUB or kernel
+// implementation.
+/**
+ * num_elements     is the size of the input and output arrays
+ * input_array      is the array that holds the data that is to be sorted
+ * output_array     is the array that holds the sorted data
+ * func             is either the funtion of sortRedByKeyCUB() or sortByKernel()
+ */
+double allocate_initiate(uint32_t num_elements
+                        , uint32_t* input_array
+                        , uint32_t* output_array
+                        , functiontype func){
+    uint32_t* d_keys_in;
+    uint32_t* d_keys_out;
+    cudaSucceeded(cudaMalloc((void**) &d_keys_in, num_elements * sizeof(uint32_t)));
+    cudaSucceeded(cudaMemcpy(d_keys_in, input_array, num_elements * sizeof(uint32_t), cudaMemcpyHostToDevice));
+    cudaSucceeded(cudaMalloc((void**) &d_keys_out, num_elements * sizeof(uint32_t)));
+
+    double elapsed = func( d_keys_in, d_keys_out, num_elements);
+
+    cudaMemcpy(output_array, d_keys_out, num_elements*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    cudaCheckError();
+
+    // clean up
+    cudaFree(d_keys_in); cudaFree(d_keys_out);
+    return elapsed;
+}
+
+
 
 // Error message
-void print_usage() {
-    printf("Usage: %s <num_elements>\n", argv[0]);
+void print_usage(char* arg) {
+    printf("Usage: %s <num_elements>\n", arg);
 }
 
 
 int main(int argc, char* argv[]) {
-    // Validation of arguments
+    // Validate the arguments
     if (argc != 1 + 1) {
-        print_usage();
+        print_usage(argv[0]);
         exit(1);
     }
 
     // Check that the input array size is larger than 0
     const uint32_t num_elements = atoi(argv[1]);
-    if (num_elements_tmp <= 0) {
+    if (num_elements <= 0) {
         printf("Number of elements should be greater than 0\n");
-        print_usage();
+        print_usage(argv[0]);
         exit(1);
     }
-
-    // skal vi lave en copi af input array'et, så vi ikke ødelægger det når vi
-    // først sender det til CUB library og så derefter vores eget?
 
     //uint32_t num_elements = (uint32_t)num_elements_tmp;
 
     //Create input_array with random values
-    int32_t* input_array = make_random_array(num_elements);
-    //Allocate for output_array that will hold the results
-    int32_t* output_array  = (int32_t*) malloc(num_elements*sizeof(int32_t));
+    uint32_t* input_array = make_random_array(num_elements);
+    //Allocate for output_array that will hold the results for CUB
+    uint32_t* out_arr_CUB  = (uint32_t*) malloc(num_elements*sizeof(uint32_t));
+    //Allocate for output_array that will hold the results for kernel execution
+    uint32_t* out_arr_ker  = (uint32_t*) malloc(num_elements*sizeof(uint32_t));
 
-    //Allocate and Initialize Device data
-    int32_t* d_keys_in;
-    int32_t* d_keys_out;
-    cudaSucceeded(cudaMalloc((void**) &d_keys_in, num_elements * sizeof(int32_t)));
-    cudaSucceeded(cudaMemcpy(d_keys_in, input_array, num_elements * sizeof(int32_t), cudaMemcpyHostToDevice));
-    cudaSucceeded(cudaMalloc((void**) &d_keys_out, num_elements * sizeof(int32_t)));
+    //Run the CUB implementation
+    functiontype CUB_func = &sortRedByKeyCUB;
+    double elapsedCUB = allocate_initiate(num_elements, input_array, out_arr_CUB, CUB_func);
 
-    double elapsed = sortRedByKeyCUB( d_keys_in, d_keys_out, num_elements);
+    //Run the kernel implementation
+    //functiontype ker_func = &sortRedByKeyCUB;
+    //double elapsedKer = allocate_initiate(num_elements, input_array, out_arr_ker, ker_func);
 
-    cudaMemcpy(output_array, d_keys_out, num_elements*sizeof(int32_t), cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-    cudaCheckError();
+    
+    bool success = validate(out_arr_CUB, num_elements);
 
-    //bool success = validateZ(h_keys_res, N);
+    printf("CUB Sorting for N=%lu runs in: %.2f us, VALID: %d\n", num_elements, elapsedCUB, success);
+    //printf("CUB Sorting for N=%lu runs in: %.2f us\n", num_elements, elapsedCUB);
 
-    printf("CUB Sorting for N=%lu runs in: %.2f us, VALID: %d\n", N, elapsed, success);
+    free(input_array); free(out_arr_CUB); free(out_arr_ker);
 
-    // Cleanup and closing
-    cudaFree(d_keys_in); cudaFree(d_keys_out);
-    free(input_array); free(output_array);
-
-    return success ? 0 : 1;
-}
+    return 0;//success ? 0 : 1;
 }
