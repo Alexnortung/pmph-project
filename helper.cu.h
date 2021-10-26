@@ -9,6 +9,8 @@
 #include <time.h>
 
 #define GPU_RUNS    400
+#define NUM_BITS    1
+#define ELEM_PER_THREAD  4
 
 int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
 {

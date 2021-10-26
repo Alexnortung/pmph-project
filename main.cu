@@ -1,4 +1,4 @@
-#include "cub-1.8.0/cub/cub.cuh"
+#include "../cub-1.8.0/cub/cub.cuh"
 #include <stdio.h>
 #include <stdlib.h>
 //#include "kernels.cu.h"
@@ -95,7 +95,21 @@ double sortRedByKeyCUB( uint32_t* input_array
 double sortByKernel(uint32_t* input_array
                   , uint32_t* output_array
                   , const uint64_t num_elem){
+
+    
+    uint32_t ind_count_arr_size = 1 << NUM_BITS;
+    uint32_t num_threads = (num_elem + ELEM_PER_THREAD -1)/ELEM_PER_THREAD;
+    uint32_t count_arr_size = num_threads * ind_count_arr_size;
+    
+    uint32_t* count_array;
+    cudaSucceeded(cudaMalloc((void**) &count_array, count_arr_size * sizeof(uint32_t)));
+    
+    
     double elapsed = num_elem;
+
+
+    //clean up
+    cudaFree(count_array);
     return elapsed;
 }
 
@@ -150,8 +164,6 @@ int main(int argc, char* argv[]) {
         print_usage(argv[0]);
         exit(1);
     }
-
-    //uint32_t num_elements = (uint32_t)num_elements_tmp;
 
     //Create input_array with random values
     uint32_t* input_array = make_random_array(num_elements);
