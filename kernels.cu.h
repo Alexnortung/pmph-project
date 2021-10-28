@@ -1,5 +1,53 @@
 #include "helper.cu.h"
 
+__global__ void make_histogram(uint32_t* input_array, int bit_offset, int* histograms, int* output) {
+    unsigned int histogram_size = 1 << NUM_BITS;
+    int gid = blockIdx.x*blockDim.x + threadIdx.x;
+    int B = blockDim.x;
+    uint32_t items[ELEM_PER_THREAD];
+    char bins[ELEM_PER_THREAD]; // If num_bits is greater than 8, this cannot be char.
+    __shared__ int histogram[histogram_size];
+    
+    unsigned int bitmask = (histogram_size - 1) << bit_offset;
+
+    int i = 0;
+    // each thread loops over ELEM_PER_THREAD elements in the block with coalesced access
+    for (int idx = threadIdx.x;idx < ELEM_PER_THREAD * B; idx += B) {
+        uint32_t item = input_array[idx];
+        //items[i] = item;
+        uint32_t tmp_bin = item & bitmask;
+        int bin = tmp_bin >> bit_offset;
+        //bins[i] = (char)bin;
+        // increment the value in the histogram and save the relative_offset
+        int relative_offset = atomicAdd(&(histogram[bin]), 1);
+        output[idx] = (item, bin, relative_offset);
+        i++;
+    }
+
+    int histogram_index = blockIdx.x;
+    for (int idx = threadIdx.x; idx < histogram_size; idx += B)
+        histograms[histogram_index * histogram_size + idx] = histogram[idx];
+    }
+}
+
+__global__ void histogram_scan() {
+
+}
+
+__global__ void histogram_scatter(int* histograms_multi_scanned, int* global_offsets, uint32_t* items, char* bins, uint32_t* relative_offsets, uint32_t* output) {
+    unsigned int histogram_size = 1 << NUM_BITS;
+    int gid = blockIdx.x*blockDim.x + threadIdx.x;
+    //if (gid >= ) // TODO:
+    uint32_t relative_offset = relative_offsets[gid];
+    int histogram_index = 0; // TODO:
+    char bin = bins[gid];
+    uint32_t item = items[gid];
+    int global_offset = global_offsets[bin];
+    int histogram_offset = histograms_multi_scanned[histogram_index + bin];
+    int global_index = global_offset + histogram_offset + relative_offset;
+    output[global_index] = item;
+}
+
 __global__ void count_and_sort(uint32_t* input_array, uint32_t* output_array, unsigned int size, int* count_array, int bit_offset) {
     unsigned int count_arr_size = 1 << NUM_BITS;
     int gid = blockIdx.x*blockDim.x + threadIdx.x;
