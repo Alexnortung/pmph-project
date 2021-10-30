@@ -8,3 +8,7 @@ cub-sort: main.cu helper.cu.h
 
 clean:
 	rm -f test-cub
+
+test-make-histogram:
+	nvcc -I$(CUB)/cub -o test-make-histogram testMakeHistogram.cu
+	./test-make-histogram 5

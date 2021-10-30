@@ -96,16 +96,36 @@ double sortByKernel(uint32_t* input_array
                   , uint32_t* output_array
                   , const uint64_t num_elem){
 
+    uint32_t histogram_size = 1 << NUM_BITS; // 
+
+    unsigned int block_size_make_hist = 256;
+    uint32_t num_threads_make_hist = (num_elem + ELEM_PER_THREAD -1)/ELEM_PER_THREAD; // num threads for make_histogram
+    unsigned int num_blocks_make_hist = (num_threads_make_hist + block_size - 1) / block_size;
+    uint32_t all_histograms_size = num_threads_make_hist * histogram_size;
     
-    uint32_t ind_count_arr_size = 1 << NUM_BITS;
-    uint32_t num_threads = (num_elem + ELEM_PER_THREAD -1)/ELEM_PER_THREAD;
-    uint32_t count_arr_size = num_threads * ind_count_arr_size;
+    uint32_t* histograms;
+    uint32_t* histograms_trans; // transposed
+    uint32_t* relative_offsets;
+
+    cudaSucceeded(cudaMalloc((void**) &histograms, all_histograms_size * sizeof(uint32_t)));
+    cudaSucceeded(cudaMalloc((void**) &histograms_trans, all_histograms_size * sizeof(uint32_t)));
+    cudaSucceeded(cudaMalloc((void**) &relative_offsets, all_histograms_size * sizeof(uint32_t)));
+
+    for (int i = 0; i < sizeof(uint32_t) * 8; i += NUM_BITS) {
+        // TODO: call make_histogram
+        int bit_offset = i;
+        make_histogram<<< num_blocks_make_hist, block_size_make_hist >>>(input_array, num_elem, bit_offset, histograms, relative_offsets);
+
+        // TODO: call transpose
+        transpositions
+        // TODO: call segmented scan
+        // TODO: call transpose
+
+        // TODO: scatter histogram
+    }
+
     
-    uint32_t* count_array;
-    cudaSucceeded(cudaMalloc((void**) &count_array, count_arr_size * sizeof(uint32_t)));
-    
-    
-    double elapsed = num_elem;
+    double elapsed = num_elem; // TODO: fix this
 
 
     //clean up
@@ -177,7 +197,7 @@ int main(int argc, char* argv[]) {
     double elapsedCUB = allocate_initiate(num_elements, input_array, out_arr_CUB, CUB_func);
 
     //Run the kernel implementation
-    //functiontype ker_func = &sortRedByKeyCUB;
+    //functiontype ker_func = &sortByKernel;
     //double elapsedKer = allocate_initiate(num_elements, input_array, out_arr_ker, ker_func);
 
     
