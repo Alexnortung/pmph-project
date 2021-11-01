@@ -1,12 +1,16 @@
 #ifndef HISTO_HELPER
 #define HISTO_HELPER
 
+#include "cub-1.8.0/cub/cub.cuh"
 #include <assert.h>
 #include <stdio.h>
+#include <iostream>
 #include <stdlib.h>
 #include <math.h>
 #include <sys/time.h>
 #include <time.h>
+#include <stdint.h>
+#include <cuda_runtime.h>
 
 #define GPU_RUNS    400
 #define NUM_BITS    1

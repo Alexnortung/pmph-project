@@ -75,12 +75,12 @@ void mapredNaive( const uint32_t     B         // desired CUDA block size ( <= 1
     uint32_t Q, K;
     log2UB(N, &Q, &K);
 
-    {
-        // first invocation
-        uint32_t T = Q/2;
-        uint32_t num_blocks = (T + B - 1) / B;
-        redNaiveKernel1<OP><<< num_blocks, B >>>(d_out, d_in, N, T);
-    }
+    //{ // TODO: remove?
+    //    // first invocation
+    //    uint32_t T = Q/2;
+    //    uint32_t num_blocks = (T + B - 1) / B;
+    //    redNaiveKernel1<OP><<< num_blocks, B >>>(d_out, d_in, N, T);
+    //}
     gpuAssert( cudaPeekAtLastError() );
     uint32_t offs_inp = 0;
     uint32_t offs_out = Q/2;

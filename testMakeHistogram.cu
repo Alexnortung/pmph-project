@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "helper.cu.h"
-#include "common.cu.h"
 #include "kernels.cu.h"
 
 template<class T, class U>

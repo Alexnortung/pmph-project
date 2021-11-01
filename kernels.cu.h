@@ -49,12 +49,12 @@ __global__ void histogram_scatter(uint32_t* histograms_multi_scanned, const uint
     unsigned int histogram_size = 1 << NUM_BITS;
     unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
     uint32_t item;
-    uint64_t global_index
+    uint64_t global_index;
     if (gid < input_arr_size) {
+        item = items[gid];
         uint64_t bitmask = (histogram_size - 1) << bit_offset;
         uint32_t tmp_bin = item & bitmask;
         uint32_t bin = tmp_bin >> bit_offset;
-        item = items[gid];
         uint32_t global_offset = global_offsets[bin];
         uint32_t histogram_index = gid / elements_per_histogram;
         uint32_t histogram_offset = histograms_multi_scanned[histogram_index + bin];

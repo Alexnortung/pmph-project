@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include "./constants.cu.h"
 
 /**
  * Generic Add operator that can be instantiated over
@@ -12,7 +13,7 @@ class Add {
     typedef T RedElTp;
     static const bool commutative = true;
     static __device__ __host__ inline T identInp()                    { return (T)0;    }
-    //static __device__ __host__ inline T mapFun(const T& el)           { return el;      } // TODO: remove
+    static __device__ __host__ inline T mapFun(const T& el)           { return el;      } // is being used for scan
     static __device__ __host__ inline T identity()                    { return (T)0;    }
     static __device__ __host__ inline T apply(const T t1, const T t2) { return t1 + t2; }
 
@@ -79,6 +80,47 @@ __global__ void matTransposeKer(T* A, T* B, int heightA, int widthA) {
     if( (gidx >= widthA) || (gidy >= heightA) ) return;
 
     B[gidx*heightA+gidy] = A[gidy*widthA + gidx];
+}
+
+//////
+//      OTHER
+//////
+template<class T, uint32_t CHUNK>
+__device__ inline void
+copyFromGlb2ShrMem( const uint32_t glb_offs
+                  , const uint32_t N
+                  , const T& ne
+                  , T* d_inp
+                  , volatile T* shmem_inp
+) {
+    #pragma unroll
+    for(uint32_t i=0; i<CHUNK; i++) {
+        uint32_t loc_ind = threadIdx.x + i*blockDim.x;
+        uint32_t glb_ind = glb_offs + loc_ind;
+        T elm = ne;
+        if(glb_ind < N) { elm = d_inp[glb_ind]; }
+        shmem_inp[loc_ind] = elm;
+    }
+    __syncthreads(); // leave this here at the end!
+}
+
+template<class T, uint32_t CHUNK>
+__device__ inline void
+copyFromShr2GlbMem( const uint32_t glb_offs
+                  , const uint32_t N
+                  , T* d_out
+                  , volatile T* shmem_red
+) {
+    #pragma unroll
+    for (uint32_t i = 0; i < CHUNK; i++) {
+        uint32_t loc_ind = threadIdx.x + i * blockDim.x;
+        uint32_t glb_ind = glb_offs + loc_ind;
+        if (glb_ind < N) {
+            T elm = const_cast<const T&>(shmem_red[loc_ind]);
+            d_out[glb_ind] = elm;
+        }
+    }
+    __syncthreads(); // leave this here at the end!
 }
 
 /***************************************/
@@ -450,6 +492,117 @@ sgmScan1Block( typename OP::RedElTp* d_vals
 }
 
 /**
+ * Kernel to implement the naive reduce, which uses neither
+ *   efficient sequentialization, nor fast, shared memory.
+ */ 
+template<class OP>
+__global__ void 
+redNaiveKernel2( typename OP::RedElTp* d_out
+               , const uint32_t offs_inp
+               , const uint32_t offs_out
+               , const uint32_t N
+               , const uint32_t T
+) {
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+    typename OP::RedElTp el1 = OP::identity();
+    uint32_t ind = 2*gid;
+    if(ind < N) el1 = d_out[offs_inp + ind];
+    
+    typename OP::RedElTp el2 = OP::identity();
+    ind = ind + 1;
+    if(ind < N) el2 = d_out[offs_inp + ind];
+    el1 = OP::apply(el1, el2);
+
+    if(T==1) { if (threadIdx.x == 0) d_out[0] = el1; }
+    else {
+        if (gid < T) d_out[offs_out + gid] = el1;
+    }
+}
+
+/**
+ * Kernel for reducing up to CUDA-block number of elements
+ *   with CUDA-block number of threads. The generic associative
+ *   binary operator does not need to be commutative.
+ * This is a helper kernel for implementing the second stage of
+ *   a reduction.
+ */
+template<class OP>
+__global__ void
+redAssoc1Block( typename OP::RedElTp* d_inout   // operates in place; the reduction
+              , uint32_t N                      // result is written in position 0
+) {
+    extern __shared__ char sh_mem[];
+    volatile typename OP::RedElTp* shmem_red = (typename OP::RedElTp*)sh_mem;
+    typename OP::RedElTp elm = OP::identity();
+    if(threadIdx.x < N) {
+        elm = d_inout[threadIdx.x];
+    }
+    shmem_red[threadIdx.x] = elm;
+    __syncthreads();
+    elm = scanIncBlock<OP>(shmem_red, threadIdx.x);
+    if (threadIdx.x == blockDim.x-1) {
+        d_inout[0] = elm;
+    }
+}
+
+/**
+ * This kernel assumes that the generic-associative binary operator
+ *   `OP` is also commutative. It implements the first stage of the
+ *   reduction.
+ * `N` is the length of the input array
+ * `T` is the total number of CUDA threads spawned.
+ * `d_tmp` is the result array, having number-of-blocks elements.
+ * `d_in` is the input array of length `N`.
+ *
+ * The number of spawned blocks is <= 1024, so that the result
+ *   array (having one element per block) can be reduced within
+ *   one block with kernel `redAssoc1Block`.
+ */
+template<class OP>
+__global__ void
+redCommuKernel( typename OP::RedElTp* d_tmp
+              , typename OP::InpElTp* d_in
+              , uint32_t N
+              , uint32_t T
+) {
+    extern __shared__ char sh_mem[];
+    // shared memory holding the to-be-reduced elements.
+    // The length of `shmem_red` array is the CUDA block size. 
+    volatile typename OP::RedElTp* shmem_red = (typename OP::RedElTp*)sh_mem;
+    uint32_t gid = blockIdx.x*blockDim.x + threadIdx.x;
+
+    // The loop efficiently sequentializes the computation by making
+    // each thread iterate through the input with a stride `T` until
+    // all array elements have been processed. The stride `T`
+    // optimizes spatial locality: it results in coalesced
+    // access to global memory (32 threads access consecutive
+    // words in memory). If each thread would have processed
+    // adjacent array elements (i.e., stride 1), then the penalty
+    // would be severe 5-10x slower!
+    typename OP::RedElTp acc = OP::identity();
+    for(uint32_t ind=gid; ind < N; ind+=T) {
+        // read input element
+        typename OP::InpElTp elm = d_in[ind];
+        // apply the mapped function and accumulate the per-thread
+        // result in `acc`.
+        typename OP::RedElTp red = OP::mapFun(elm);
+        acc = OP::apply(acc, red);
+    }
+
+    // the per-thread results are then placed in shared memory
+    // and reduced in parallel within the current CUDA-block.
+    shmem_red[threadIdx.x] = acc;
+    __syncthreads();
+    acc = scanIncBlock<OP>(shmem_red, threadIdx.x);
+
+    // the result of the current CUDA block is placed
+    // in global memory; the position is thus given by
+    // the index of the current block.
+    if (threadIdx.x == blockDim.x-1) {
+        d_tmp[blockIdx.x] = acc;
+    }
+}
+/**
  * This kernel implements the first stage of a segmented scan.
  * In essence, it reduces the elements to tbe processed by the
  * current CUDA block (in number of `num_seq_chunks*CHUNK*blockDim.x`).
@@ -655,5 +808,83 @@ sgmScan3rdKernel ( typename OP::RedElTp* d_out
         // 5. write back to global memory in coalesced form
         copyFromShr2GlbMem<typename OP::RedElTp, CHUNK>
                   (inp_block_offs+seq, N, d_out, shmem_red);
+    }
+}
+
+/**
+ * This kernel assumes that the generic-associative binary operator
+ *   `OP` is NOT commutative. It implements the first stage of the
+ *   reduction. 
+ * `N` is the length of the input array
+ * `CHUNK` (the template parameter) is the number of elements to
+ *    be processed sequentially by a thread in one go.
+ * `num_seq_chunks` is used to sequentialize even more computation,
+ *    such that the number of blocks is <= 1024, hence the result
+ *    array (one element per block) can be reduced within one
+ *    block with kernel `redAssoc1Block`.
+ * `d_tmp` is the result array, having number-of-blocks elements,
+ * `d_in` is the input array of length `N`.
+ */
+template<class OP, int CHUNK>
+__global__ void
+redAssocKernel( typename OP::RedElTp* d_tmp
+              , typename OP::InpElTp* d_in
+              , uint32_t N
+              , uint32_t num_seq_chunks
+) {
+    extern __shared__ char sh_mem[];
+    // shared memory for the input-element and reduce-element type;
+    // the two shared memories overlap, since they are not used in
+    // the same time.
+    volatile typename OP::InpElTp* shmem_inp = (typename OP::InpElTp*)sh_mem;
+    volatile typename OP::RedElTp* shmem_red = (typename OP::RedElTp*)sh_mem;
+
+    // initialization for the per-block result
+    typename OP::RedElTp res = OP::identity();
+    
+    uint32_t num_elems_per_block = num_seq_chunks * CHUNK * blockDim.x;
+    uint32_t inp_block_offs = num_elems_per_block * blockIdx.x;
+    uint32_t num_elems_per_iter  = CHUNK * blockDim.x;
+
+    // virtualization loop of count `num_seq_chunks`. Each iteration processes
+    //   `blockDim.x * CHUNK` elements, i.e., `CHUNK` elements per thread.
+    // `num_seq_chunks` is chosen such that it covers all N input elements
+    for(int seq=0; seq<num_elems_per_block; seq+=num_elems_per_iter) {
+
+        // 1. copy `CHUNK` input elements per thread from global to shared memory
+        //    in a coalesced fashion (for global memory)
+        copyFromGlb2ShrMem<typename OP::InpElTp,CHUNK>
+                ( inp_block_offs + seq, N, OP::identInp(), d_in, shmem_inp );
+
+        // 2. each thread sequentially reads its `CHUNK` elements from shared
+        //     memory, applies the map function and reduces them.
+        typename OP::RedElTp acc = OP::identity();
+        uint32_t shmem_offset = threadIdx.x * CHUNK;
+        #pragma unroll
+        for (uint32_t i = 0; i < CHUNK; i++) {
+            typename OP::InpElTp elm = shmem_inp[shmem_offset + i];
+            typename OP::RedElTp red = OP::mapFun(elm);
+            acc = OP::apply(acc, red);
+        }
+        __syncthreads();
+        
+        // 3. each thread publishes the previous result in shared memory
+        shmem_red[threadIdx.x] = acc;
+        __syncthreads();
+
+        // 4. perform an intra-block reduction with the per-thread result
+        //    from step 2; the last thread updates the per-block result `res`
+        acc = scanIncBlock<OP>(shmem_red, threadIdx.x);
+        if (threadIdx.x == blockDim.x-1) {
+            res = OP::apply(res, acc);
+        }
+        __syncthreads();
+        // rinse and repeat until all elements have been processed.
+    }
+
+    // 4. last thread publishes the per-block reduction result
+    //    in global memory
+    if (threadIdx.x == blockDim.x-1) {
+        d_tmp[blockIdx.x] = res;
     }
 }
