@@ -1,7 +1,6 @@
 #include "cub-1.8.0/cub/cub.cuh"
 #include <stdio.h>
 #include <stdlib.h>
-//#include "kernels.cu.h"
 #include "helper.cu.h"
 #include "common.cu.h"
 #include "kernels.cu.h"

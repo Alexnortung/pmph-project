@@ -42,7 +42,7 @@ __global__ void make_histogram_flags(T num_histograms, char* flags) {
     if (gid >= num_histograms * histogram_size) {
         return;
     }
-    flags[gid] = (histogram_size - 1) & gid == 0;
+    flags[gid] = gid % num_histograms == 0;
 }
 
 __global__ void histogram_scatter(uint32_t* histograms_multi_scanned, const uint64_t input_arr_size, const uint32_t elements_per_histogram, uint32_t* global_offsets, uint32_t* items, uint32_t bit_offset, uint32_t* relative_offsets, uint32_t* output) {
