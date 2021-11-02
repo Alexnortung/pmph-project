@@ -132,14 +132,8 @@ int main(int argc, char* argv[]) {
 
     //Create input_array with random values
     uint32_t* input_array = make_random_array(num_elements);
-    //Allocate for output_array that will hold the results for CUB
-    uint32_t* out_arr_CUB  = (uint32_t*) malloc(num_elements*sizeof(uint32_t));
     //Allocate for output_array that will hold the results for kernel execution
     uint32_t* out_arr_ker  = (uint32_t*) malloc(num_elements*sizeof(uint32_t));
-
-    //Run the CUB implementation
-    functiontype CUB_func = &sortRedByKeyCUB;
-    //double elapsedCUB = allocate_initiate(num_elements, input_array, out_arr_CUB, CUB_func);
 
     //Run the kernel implementation
     functiontype ker_func = &sortByKernel;
@@ -151,7 +145,7 @@ int main(int argc, char* argv[]) {
     //printf("CUB Sorting for N=%lu runs in: %.2f us, VALID: %d\n", num_elements, elapsedCUB, success);
     //printf("CUB Sorting for N=%lu runs in: %.2f us\n", num_elements, elapsedCUB);
 
-    free(input_array); free(out_arr_CUB); free(out_arr_ker);
+    free(input_array); free(out_arr_ker);
 
     return 0;//success ? 0 : 1;
 }
