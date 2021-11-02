@@ -20,6 +20,15 @@
 //To pass on function name
 typedef double (*functiontype)(uint32_t*, uint32_t*, const uint64_t);
 
+template<class T, class U>
+void printArray(T* array, U array_size) {
+    printf("[ ");
+    for (U i = 0; i < array_size; i++) {
+        printf("%d, ", array[i]);
+    }
+    printf("]\n");
+}
+
 int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
 {
   unsigned int resolution=1000000;
@@ -75,8 +84,9 @@ void writeRuntime(const char *fname, double elapsed) {
  * num_elems        is the size of the output array
  * output_array     is the output array that has been sorted
  */
-bool validate(uint32_t* output_array, uint32_t num_elems) {
-    for(uint32_t i = 0; i < num_elems-1; i++){
+template<class T, class U>
+bool validate(T* output_array, U num_elems) {
+    for(U i = 0; i < num_elems-1; i++){
         if (output_array[i] > output_array[i+1]){
             printf("INVALID RESULT for i:%d, (output[i-1]=%d > output[i]=%d)\n", i, output_array[i-1], output_array[i]);
             return false;

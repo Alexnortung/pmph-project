@@ -4,7 +4,8 @@ all: cub-sort
 
 ker-sort: main.cu helper.cu.h
 	nvcc -I$(CUB)/cub -o test-ker main.cu
-	./test-ker 100000000
+	#./test-ker 10000000
+	./test-ker 10
 
 cub-sort: CUBsort.cu helper.cu.h
 	nvcc -I$(CUB)/cub -o test-CUB CUBsort.cu

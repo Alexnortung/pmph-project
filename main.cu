@@ -43,13 +43,15 @@ double sortByKernel(uint32_t* input_array
     size_t histogram_size = 1 << NUM_BITS; // 
 
     unsigned int block_size_make_hist = 256;
+    // get ceil of num_elem / ELEM_PER_THREAD_MAKE_HIST
     uint32_t num_threads_make_hist = (num_elem + ELEM_PER_THREAD_MAKE_HIST -1)/ELEM_PER_THREAD_MAKE_HIST; // num threads for make_histogram
+    // get ceil of num_threads_make_hist / block_size_make_hist
     unsigned int num_blocks_make_hist = (num_threads_make_hist + block_size_make_hist - 1) / block_size_make_hist;
     uint32_t num_histograms = num_blocks_make_hist;
-    uint32_t all_histograms_size = num_threads_make_hist * histogram_size;
-    uint32_t num_elem_per_histo = num_threads_make_hist * ELEM_PER_THREAD_MAKE_HIST;
+    uint32_t all_histograms_size = num_histograms * histogram_size;
+    uint32_t num_elem_per_histo = num_threads_make_hist * ELEM_PER_THREAD_MAKE_HIST; // elements per histogram
     
-    uint32_t* histograms;
+    uint32_t* histograms; // array of total histograms
     uint32_t* histograms_trans; // transposed
     uint32_t* histograms_trans_scanned; // transposed, scanned
     uint32_t* relative_offsets;
@@ -59,7 +61,7 @@ double sortByKernel(uint32_t* input_array
     cudaSucceeded(cudaMalloc((void**) &histograms, all_histograms_size * sizeof(uint32_t)));
     cudaSucceeded(cudaMalloc((void**) &histograms_trans, all_histograms_size * sizeof(uint32_t)));
     cudaSucceeded(cudaMalloc((void**) &histograms_trans_scanned, all_histograms_size * sizeof(uint32_t)));
-    cudaSucceeded(cudaMalloc((void**) &relative_offsets, all_histograms_size * sizeof(uint32_t)));
+    cudaSucceeded(cudaMalloc((void**) &relative_offsets, num_elem * sizeof(uint32_t)));
     cudaSucceeded(cudaMalloc((void**) &global_offsets, histogram_size * sizeof(uint32_t)));
     cudaSucceeded(cudaMalloc((void**) &d_tmp_scan, MAX_BLOCK * sizeof(uint32_t)));
 
@@ -76,41 +78,79 @@ double sortByKernel(uint32_t* input_array
     unsigned int block_size_scatter = 256;
     unsigned int scatter_blocks = (num_elem + block_size_scatter - 1) / block_size_scatter;
 
-    cudaMemcpy(input_array, output_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToDevice);
+    // timing
+    double elapsed;
+    struct timeval t_start, t_end, t_diff;
+    gettimeofday(&t_start, NULL);
 
-    printf("grid_transpose: %A\n", grid_transpose);
+    for (int run = 0; run < 1; run++) {
+        cudaMemcpy(output_array, input_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToDevice);
 
-    for (int i = 0; i < sizeof(uint32_t) * 8; i += NUM_BITS) {
-        // call make_histogram
-        int bit_offset = i;
-        //printf("Making histogram\n");
-        make_histogram<<< num_blocks_make_hist, block_size_make_hist >>>(output_array, num_elem, bit_offset, histograms, relative_offsets);
-        //cudaDeviceSynchronize();
+        for (uint64_t i = 0; i < sizeof(uint32_t) * 8; i += NUM_BITS) {
+            // call make_histogram
+            uint64_t bit_offset = i;
+            //printf("Making histogram\n");
+            make_histogram<<< num_blocks_make_hist, block_size_make_hist >>>(output_array, num_elem, bit_offset, histograms, relative_offsets);
+            cudaDeviceSynchronize();
 
-        // call transpose
-        //printf("transposing histogram\n");
-        matTransposeKer<<< grid_transpose, block_transpose >>>(histograms, histograms_trans, histogram_size, num_histograms);
-        //cudaDeviceSynchronize();
-        // call segmented scan
-        //printf("Scanning transposed histogram\n");
-        sgmScanHistogram(block_size_sgm_scan, all_histograms_size, histograms_trans, histograms_trans_scanned);
-        //cudaDeviceSynchronize();
-        // call transpose
-        //printf("transposing histogram\n");
-        matTransposeKer<<< grid_transpose2, block_transpose2 >>>(histograms_trans_scanned, histograms, num_histograms, histogram_size);
-        //cudaDeviceSynchronize();
+            // call transpose
+            //printf("transposing histogram\n");
+            matTransposeKer<<< grid_transpose, block_transpose >>>(histograms, histograms_trans, histogram_size, num_histograms);
+            //uint32_t* histograms_trans_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
+            //cudaMemcpy(histograms_trans_cpu, histograms_trans, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //
+            ////printf("all_histograms_size: %d\n", all_histograms_size);
+            //printf("hist trans [");
+            //for(int i2 = 0; i2 < all_histograms_size; i2++){
+            //    printf("%d,", histograms_trans_cpu[i2]);
+            //}
+            //printf("]\n");
+            //free(histograms_trans_cpu);
+            cudaDeviceSynchronize();
+            // call segmented scan
+            //printf("Scanning transposed histogram\n");
+            sgmScanHistogram(block_size_sgm_scan, all_histograms_size, histograms_trans, histograms_trans_scanned);
+            cudaDeviceSynchronize();
+            // call transpose
+            //printf("transposing histogram\n");
+            matTransposeKer<<< grid_transpose2, block_transpose2 >>>(histograms_trans_scanned, histograms, num_histograms, histogram_size);
+            cudaDeviceSynchronize();
+            //uint32_t* histograms_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
+            //cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //
+            ////printf("all_histograms_size: %d\n", all_histograms_size);
+            //printf("hist [");
+            //for(int i2 = 0; i2 < all_histograms_size; i2++){
+            //    printf("%d,", histograms_cpu[i2]);
+            //}
+            //printf("]\n");
+            //free(histograms_cpu);
 
-        uint32_t* last_histogram = &histograms[(num_histograms - 1) * histogram_size];
-        scanInc< Add<uint32_t> > ( 64, histogram_size, global_offsets, last_histogram, d_tmp_scan );
-        //cudaDeviceSynchronize();
+            uint32_t* last_histogram = &histograms[(num_histograms - 1) * histogram_size];
+            scanInc< Add<uint32_t> > ( 64, histogram_size, global_offsets, last_histogram, d_tmp_scan );
+            cudaDeviceSynchronize();
+            //uint32_t* global_offsets_cpu = (uint32_t*)malloc(histogram_size * sizeof(uint32_t));
+            //cudaMemcpy(global_offsets_cpu, global_offsets, histogram_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+            //
+            ////printf("all_histograms_size: %d\n", all_histograms_size);
+            //printf("glb_offs [");
+            //for(int i2 = 0; i2 < histogram_size; i2++){
+            //    printf("%d,", global_offsets_cpu[i2]);
+            //}
+            //printf("]\n");
+            //free(global_offsets_cpu);
 
-        // scatter histogram
-        histogram_scatter<<< scatter_blocks, block_size_scatter >>>(histograms, num_elem, num_elem_per_histo, global_offsets, output_array, bit_offset, relative_offsets, output_array);
-        //cudaDeviceSynchronize();
+            // scatter histogram
+            histogram_scatter<<< scatter_blocks, block_size_scatter >>>(histograms, num_elem, num_elem_per_histo, global_offsets, output_array, bit_offset, relative_offsets, output_array);
+            cudaDeviceSynchronize();
+        }
     }
+    cudaDeviceSynchronize();
 
     
-    double elapsed = num_elem; // TODO: fix this
+    gettimeofday(&t_end, NULL);
+    timeval_subtract(&t_diff, &t_end, &t_start);
+    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / ((double)GPU_RUNS);
 
 
     //clean up
@@ -149,6 +189,17 @@ int main(int argc, char* argv[]) {
     //Run the kernel implementation
     functiontype ker_func = &sortByKernel;
     double elapsedKer = allocate_initiate(num_elements, input_array, out_arr_ker, ker_func);
+
+    //printf("input: [");
+    //for(int i = 0; i < num_elements; i++){
+    //    printf("%d,", input_array[i]);
+    //}
+    //printf("]");
+    //printf("output: [");
+    //for(int i = 0; i < num_elements; i++){
+    //    printf("%d,", out_arr_ker[i]);
+    //}
+    //printf("]");
 
     
     bool success = validate(out_arr_ker, num_elements);

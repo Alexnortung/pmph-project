@@ -1,7 +1,12 @@
 #include "helper.cu.h"
 #include "helperKernel.cu.h"
 
-__global__ void make_histogram(uint32_t* input_array, const uint64_t input_arr_size, uint64_t bit_offset, uint32_t* histograms, uint32_t* relative_offsets) {
+__global__ void make_histogram(uint32_t* input_array
+        , const uint64_t input_arr_size
+        , uint64_t bit_offset
+        , uint32_t* histograms
+        , uint32_t* relative_offsets
+) {
     const unsigned int histogram_size = 1 << NUM_BITS;
     int B = blockDim.x;
     uint64_t histogram_index = blockIdx.x;
@@ -42,10 +47,18 @@ __global__ void make_histogram_flags(T num_histograms, char* flags) {
     if (gid >= num_histograms * histogram_size) {
         return;
     }
-    flags[gid] = gid % num_histograms == 0;
+    flags[gid] = gid % num_histograms == 0; // TODO: maybe change modulo (%) ?
 }
 
-__global__ void histogram_scatter(uint32_t* histograms_multi_scanned, const uint64_t input_arr_size, const uint32_t elements_per_histogram, uint32_t* global_offsets, uint32_t* items, uint32_t bit_offset, uint32_t* relative_offsets, uint32_t* output) {
+__global__ void histogram_scatter(uint32_t* histograms_multi_scanned
+                                , const uint64_t input_arr_size
+                                , const uint32_t elements_per_histogram
+                                , uint32_t* global_offsets
+                                , uint32_t* items
+                                , uint32_t bit_offset
+                                , uint32_t* relative_offsets
+                                , uint32_t* output
+) {
     unsigned int histogram_size = 1 << NUM_BITS;
     unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
     uint32_t item;
@@ -55,9 +68,19 @@ __global__ void histogram_scatter(uint32_t* histograms_multi_scanned, const uint
         uint64_t bitmask = (histogram_size - 1) << bit_offset;
         uint32_t tmp_bin = item & bitmask;
         uint32_t bin = tmp_bin >> bit_offset;
-        uint32_t global_offset = global_offsets[bin];
+        uint32_t global_offset;
+        if (bin <= 0) {
+            global_offset = 0;
+        } else {
+            global_offset = global_offsets[bin - 1];
+        }
         uint32_t histogram_index = gid / elements_per_histogram;
-        uint32_t histogram_offset = histograms_multi_scanned[histogram_index + bin];
+        uint32_t histogram_offset;
+        if (histogram_index <= 0) {
+            histogram_offset = 0;
+        } else {
+            histogram_offset = histograms_multi_scanned[histogram_index + bin];
+        }
         uint32_t relative_offset = relative_offsets[gid];
         global_index = global_offset + histogram_offset + relative_offset;
     }
