@@ -25,7 +25,8 @@ void sgmScanHistogram(const uint32_t B
     unsigned int make_flags_block_size = B;
     unsigned int make_flags_blocks = (N + make_flags_block_size - 1) / make_flags_block_size;
 
-    make_histogram_flags<<<B, make_flags_blocks>>>(num_histograms, d_inp_flag);
+    make_histogram_flags<<<make_flags_blocks, B>>>(num_histograms, d_inp_flag);
+    //printf("Made histogram flags\n");
 
     sgmScanInc< Add<T> >( B, N, d_histo_trans_out, d_inp_flag, d_histo_trans_in, d_tmp_vals, d_tmp_flag );
 
@@ -42,11 +43,11 @@ double sortByKernel(uint32_t* input_array
     size_t histogram_size = 1 << NUM_BITS; // 
 
     unsigned int block_size_make_hist = 256;
-    uint32_t num_threads_make_hist = (num_elem + ELEM_PER_THREAD -1)/ELEM_PER_THREAD; // num threads for make_histogram
+    uint32_t num_threads_make_hist = (num_elem + ELEM_PER_THREAD_MAKE_HIST -1)/ELEM_PER_THREAD_MAKE_HIST; // num threads for make_histogram
     unsigned int num_blocks_make_hist = (num_threads_make_hist + block_size_make_hist - 1) / block_size_make_hist;
     uint32_t num_histograms = num_blocks_make_hist;
     uint32_t all_histograms_size = num_threads_make_hist * histogram_size;
-    uint32_t num_elem_per_histo = num_threads_make_hist * ELEM_PER_THREAD;
+    uint32_t num_elem_per_histo = num_threads_make_hist * ELEM_PER_THREAD_MAKE_HIST;
     
     uint32_t* histograms;
     uint32_t* histograms_trans; // transposed
@@ -68,7 +69,7 @@ double sortByKernel(uint32_t* input_array
     dim3 block_transpose(tile, tile, 1);
     dim3 grid_transpose (dimx_transpose, dimy_transpose, 1);
     dim3 block_transpose2(tile, tile, 1);
-    dim3 grid_transpose2 (dimy_transpose, dimx_transpose, 1);
+    dim3 grid_transpose2 (dimy_transpose, dimx_transpose, 1); // transposed grid of grid_transpose
 
     unsigned int block_size_sgm_scan = 256;
 
@@ -77,27 +78,35 @@ double sortByKernel(uint32_t* input_array
 
     cudaMemcpy(input_array, output_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToDevice);
 
+    printf("grid_transpose: %A\n", grid_transpose);
+
     for (int i = 0; i < sizeof(uint32_t) * 8; i += NUM_BITS) {
         // call make_histogram
         int bit_offset = i;
-        printf("Making histogram\n")
+        //printf("Making histogram\n");
         make_histogram<<< num_blocks_make_hist, block_size_make_hist >>>(output_array, num_elem, bit_offset, histograms, relative_offsets);
+        //cudaDeviceSynchronize();
 
         // call transpose
-        printf("transposing histogram\n")
+        //printf("transposing histogram\n");
         matTransposeKer<<< grid_transpose, block_transpose >>>(histograms, histograms_trans, histogram_size, num_histograms);
+        //cudaDeviceSynchronize();
         // call segmented scan
-        printf("Scanning transposed histogram\n")
+        //printf("Scanning transposed histogram\n");
         sgmScanHistogram(block_size_sgm_scan, all_histograms_size, histograms_trans, histograms_trans_scanned);
+        //cudaDeviceSynchronize();
         // call transpose
-        printf("transposing histogram\n")
+        //printf("transposing histogram\n");
         matTransposeKer<<< grid_transpose2, block_transpose2 >>>(histograms_trans_scanned, histograms, num_histograms, histogram_size);
+        //cudaDeviceSynchronize();
 
         uint32_t* last_histogram = &histograms[(num_histograms - 1) * histogram_size];
         scanInc< Add<uint32_t> > ( 64, histogram_size, global_offsets, last_histogram, d_tmp_scan );
+        //cudaDeviceSynchronize();
 
         // scatter histogram
         histogram_scatter<<< scatter_blocks, block_size_scatter >>>(histograms, num_elem, num_elem_per_histo, global_offsets, output_array, bit_offset, relative_offsets, output_array);
+        //cudaDeviceSynchronize();
     }
 
     
@@ -130,8 +139,10 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
+    initHwd();
+
     //Create input_array with random values
-    uint32_t* input_array = make_random_array(num_elements);
+    uint32_t* input_array = make_rand_int_array(num_elements);
     //Allocate for output_array that will hold the results for kernel execution
     uint32_t* out_arr_ker  = (uint32_t*) malloc(num_elements*sizeof(uint32_t));
 
@@ -140,9 +151,9 @@ int main(int argc, char* argv[]) {
     double elapsedKer = allocate_initiate(num_elements, input_array, out_arr_ker, ker_func);
 
     
-    //bool success = validate(out_arr_CUB, num_elements);
+    bool success = validate(out_arr_ker, num_elements);
 
-    //printf("CUB Sorting for N=%lu runs in: %.2f us, VALID: %d\n", num_elements, elapsedCUB, success);
+    printf("CUB Sorting for N=%lu runs in: %.2f us, VALID: %d\n", num_elements, elapsedKer, success);
     //printf("CUB Sorting for N=%lu runs in: %.2f us\n", num_elements, elapsedCUB);
 
     free(input_array); free(out_arr_ker);

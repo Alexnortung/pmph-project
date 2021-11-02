@@ -12,9 +12,9 @@
 #include <stdint.h>
 #include <cuda_runtime.h>
 
-#define GPU_RUNS    400
-#define NUM_BITS    1
-#define ELEM_PER_THREAD  4
+#define GPU_RUNS                   400
+#define NUM_BITS                   1
+#define ELEM_PER_THREAD_MAKE_HIST  4
 
 
 //To pass on function name

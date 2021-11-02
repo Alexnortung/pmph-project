@@ -14,8 +14,8 @@ __global__ void make_histogram(uint32_t* input_array, const uint64_t input_arr_s
 
     int i = 0;
     // each thread loops over ELEM_PER_THREAD elements in the block with coalesced access
-    int block_offset = ELEM_PER_THREAD * B * blockIdx.x;
-    for (int idx = threadIdx.x; idx < ELEM_PER_THREAD * B; idx += B) {
+    int block_offset = ELEM_PER_THREAD_MAKE_HIST * B * blockIdx.x;
+    for (int idx = threadIdx.x; idx < ELEM_PER_THREAD_MAKE_HIST * B; idx += B) {
         int access_index = idx + block_offset;
         if (access_index >= input_arr_size) break;
         uint32_t item = input_array[access_index];

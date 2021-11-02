@@ -110,7 +110,7 @@ void mapReduce( const uint32_t     B        // desired CUDA block size ( <= 1024
               , typename OP::RedElTp* d_out // device array of max length: MAX_BLOCK
               , typename OP::InpElTp* d_in  // device array of length: N
 ) {
-    const uint32_t CHUNK = ELEMS_PER_THREAD*4/sizeof(typename OP::InpElTp);
+    const uint32_t CHUNK = ELEMS_PER_THREAD_SCAN*4/sizeof(typename OP::InpElTp);
     uint32_t num_blocks;
 
     // First stage of a reduction splits the input across blocks, 
@@ -189,7 +189,7 @@ void scanInc( const uint32_t     B     // desired CUDA block size ( <= 1024, mul
     const uint32_t inp_sz = sizeof(typename OP::InpElTp);
     const uint32_t red_sz = sizeof(typename OP::RedElTp);
     const uint32_t max_tp_size = (inp_sz > red_sz) ? inp_sz : red_sz;
-    const uint32_t CHUNK = ELEMS_PER_THREAD*4 / max_tp_size;
+    const uint32_t CHUNK = ELEMS_PER_THREAD_SCAN*4 / max_tp_size;
     uint32_t num_seq_chunks;
     const uint32_t num_blocks = getNumBlocks<CHUNK>(N, B, &num_seq_chunks);    
     const size_t   shmem_size = B * max_tp_size * CHUNK;
@@ -234,22 +234,27 @@ void sgmScanInc( const uint32_t     B     // desired CUDA block size ( <= 1024, 
     const uint32_t red_sz     = sizeof(typename OP::RedElTp);
     const uint32_t max_tp_size = (tot_inp_sz > red_sz) ? tot_inp_sz : red_sz;
     
-    const uint32_t CHUNK = ELEMS_PER_THREAD*4 / max_tp_size;
+    const uint32_t CHUNK = ELEMS_PER_THREAD_SCAN*4 / max_tp_size;
+    //printf("successful division\n");
     uint32_t num_seq_chunks;
     const uint32_t num_blocks = getNumBlocks<CHUNK>(N, B, &num_seq_chunks);    
     const size_t   shmem_size = B * max( max_tp_size * CHUNK, tot_red_sz );
+    //printf("redSgmScanKernel starting\n");
 
     redSgmScanKernel<OP, CHUNK><<< num_blocks, B, shmem_size >>>
         (d_tmp_flags, d_tmp_vals, d_flags, d_inp, N, num_seq_chunks);
+    //printf("redSgmScanKernel done\n");
 
     {
         const uint32_t block_size = closestMul32(num_blocks);
         const size_t shmem_size = block_size * ( sizeof(typename OP::RedElTp) + sizeof(char) );
         sgmScan1Block<OP><<< 1, block_size, shmem_size >>>( d_tmp_vals, d_tmp_flags, num_blocks );
+        //printf("sgmScan1Block done\n");
     }
 
     sgmScan3rdKernel<OP, CHUNK><<< num_blocks, B, shmem_size >>>
         (d_out, d_inp, d_flags, d_tmp_vals, d_tmp_flags, N, num_seq_chunks);
+    //printf("sgmScan3rdKernel done\n");
 }
 
 #endif //SCAN_HOST

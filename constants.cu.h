@@ -12,10 +12,10 @@
 //#define WORKGROUP_SIZE      128
 //#define MAX_WORKGROUP_SIZE  1024
 
-#define RUNS_GPU            100
-#define RUNS_CPU            5
-#define NUM_BLOCKS_SCAN     1024
-#define ELEMS_PER_THREAD    12
+#define RUNS_GPU                 100
+#define RUNS_CPU                 5
+#define NUM_BLOCKS_SCAN          1024
+#define ELEMS_PER_THREAD_SCAN    12
 
 typedef unsigned int uint32_t;
 typedef int           int32_t;
