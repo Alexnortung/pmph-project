@@ -16,6 +16,7 @@
 #define NUM_BITS    1
 #define ELEM_PER_THREAD  4
 
+
 //To pass on function name
 typedef double (*functiontype)(uint32_t*, uint32_t*, const uint64_t);
 
@@ -68,59 +69,12 @@ void writeRuntime(const char *fname, double elapsed) {
   fclose(f);
 }
 
-// Execute CUB-library radix sort on input_array.
-// This function is copied from the example code in CUBcode
-double sortRedByKeyCUB( uint32_t* input_array
-                      , uint32_t* output_array
-                      , const uint64_t num_elem
-) {
-    int beg_bit = 0;
-    int end_bit = 32;
 
-    void * tmp_sort_mem = NULL;
-    size_t tmp_sort_len = 0;
-
-    { // sort prelude
-        cub::DeviceRadixSort::SortKeys( tmp_sort_mem, tmp_sort_len
-                                      , input_array, output_array
-                                      , num_elem,   beg_bit,  end_bit
-                                      );
-        cudaMalloc(&tmp_sort_mem, tmp_sort_len);
-    }
-    cudaCheckError();
-
-    { // one dry run
-        cub::DeviceRadixSort::SortKeys( tmp_sort_mem, tmp_sort_len
-                                      , input_array, output_array
-                                      , num_elem,   beg_bit,  end_bit
-                                      );
-        cudaDeviceSynchronize();
-    }
-    cudaCheckError();
-
-    // timing
-    double elapsed;
-    struct timeval t_start, t_end, t_diff;
-    gettimeofday(&t_start, NULL);
-
-    for(int k=0; k<GPU_RUNS; k++) {
-        cub::DeviceRadixSort::SortKeys( tmp_sort_mem, tmp_sort_len
-                                      , input_array, output_array
-                                      , num_elem,   beg_bit,  end_bit
-                                      );
-    }
-    cudaDeviceSynchronize();
-    cudaCheckError();
-
-    gettimeofday(&t_end, NULL);
-    timeval_subtract(&t_diff, &t_end, &t_start);
-    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / ((double)GPU_RUNS);
-
-    cudaFree(tmp_sort_mem);
-
-    return elapsed;
-}
-
+// Validates if the output array is correctly sorted
+/**
+ * num_elems        is the size of the output array
+ * output_array     is the output array that has been sorted
+ */
 bool validate(uint32_t* output_array, uint32_t num_elems) {
     for(uint32_t i = 0; i < num_elems-1; i++){
         if (output_array[i] > output_array[i+1]){
@@ -131,18 +85,6 @@ bool validate(uint32_t* output_array, uint32_t num_elems) {
     return true;
 }
 
-// Generate data
-/**
- * size             is the size of the data array
- * rand_in_arr      is the input array holding random data
- */
-unsigned int* make_random_array(uint32_t size) {
-    uint32_t* rand_in_arr = (uint32_t*) malloc(size * sizeof(uint32_t));
-    for(uint32_t i = 0; i < size; i++) {
-        rand_in_arr[i] = rand();
-    }
-    return rand_in_arr;
-}
 
 // This function allocates cuda memory for either the CUB or kernel
 // implementation.
@@ -152,19 +94,20 @@ unsigned int* make_random_array(uint32_t size) {
  * output_array     is the array that holds the sorted data
  * func             is either the funtion of sortRedByKeyCUB() or sortByKernel()
  */
+template<class T>
 double allocate_initiate(uint32_t num_elements
-                        , uint32_t* input_array
-                        , uint32_t* output_array
+                        , T* input_array
+                        , T* output_array
                         , functiontype func){
-    uint32_t* d_keys_in;
-    uint32_t* d_keys_out;
-    cudaSucceeded(cudaMalloc((void**) &d_keys_in, num_elements * sizeof(uint32_t)));
-    cudaSucceeded(cudaMemcpy(d_keys_in, input_array, num_elements * sizeof(uint32_t), cudaMemcpyHostToDevice));
-    cudaSucceeded(cudaMalloc((void**) &d_keys_out, num_elements * sizeof(uint32_t)));
+    T* d_keys_in;
+    T* d_keys_out;
+    cudaSucceeded(cudaMalloc((void**) &d_keys_in, num_elements * sizeof(T)));
+    cudaSucceeded(cudaMemcpy(d_keys_in, input_array, num_elements * sizeof(T), cudaMemcpyHostToDevice));
+    cudaSucceeded(cudaMalloc((void**) &d_keys_out, num_elements * sizeof(T)));
 
     double elapsed = func( d_keys_in, d_keys_out, num_elements);
 
-    cudaMemcpy(output_array, d_keys_out, num_elements*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(output_array, d_keys_out, num_elements*sizeof(T), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     cudaCheckError();
 
@@ -177,4 +120,87 @@ double allocate_initiate(uint32_t num_elements
 void print_usage(char* arg) {
     printf("Usage: %s <num_elements>\n", arg);
 }
+
+/********************************************************
+ ****************Generate data for test******************
+ ********************************************************/
+
+// Generate random (positive) integer data 
+/**
+ * size             is the size of the data array
+ * rand_in_arr      is the input array holding random data
+ */
+unsigned int* make_rand_int_array(uint32_t size) {
+    uint32_t* rand_in_arr = (uint32_t*) malloc(size * sizeof(uint32_t));
+    for(uint32_t i = 0; i < size; i++) {
+        rand_in_arr[i] = rand() % size;
+    }
+    return rand_in_arr;
+}
+
+// Generate random (positive) float data 
+/**
+ * size             is the size of the data array
+ * rand_in_arr      is the input array holding random data
+ */
+float* make_rand_fl_array(uint32_t size) {
+    float* rand_in_arr = (float*) malloc(size * sizeof(float));
+    for(uint32_t i = 0; i < size; i++) {
+        rand_in_arr[i] = (float)rand(); //% (float) size;
+    }
+    return rand_in_arr;
+}
+
+// Generate random (positive) tuple data 
+/**
+ * size             is the size of the data array
+ * rand_in_arr      is the input array holding random data
+ */
+/*float* make_rand_tup_array(uint32_t size) {
+    float* rand_in_arr = (float*) malloc(size * sizeof(float));
+    for(uint32_t i = 0; i < size; i++) {
+        rand_in_arr[i] = (float)rand();
+    }
+    return rand_in_arr;
+}*/
+
+// Generate konstant (0) integer data 
+/**
+ * size             is the size of the data array
+ * input_arr        is the input array holding the data
+ */
+unsigned int* make_konstant_array(uint32_t size) {
+    uint32_t* input_arr = (uint32_t*) malloc(size * sizeof(uint32_t));
+    for(uint32_t i = 0; i < size; i++) {
+        input_arr[i] = 0;
+    }
+    return input_arr;
+}
+
+// Generate sorted (low -> high) integer data 
+/**
+ * size             is the size of the data array
+ * input_arr        is the input array holding the data
+ */
+unsigned int* make_sortLtoH_array(uint32_t size) {
+    uint32_t* input_arr = (uint32_t*) malloc(size * sizeof(uint32_t));
+    for(uint32_t i = 0; i < size; i++) {
+        input_arr[i] = i;
+    }
+    return input_arr;
+}
+
+// Generate sorted (high -> low) integer data 
+/**
+ * size             is the size of the data array
+ * input_arr        is the input array holding the data
+ */
+unsigned int* make_sortHtoL_array(uint32_t size) {
+    uint32_t* input_arr = (uint32_t*) malloc(size * sizeof(uint32_t));
+    for(uint32_t i = 0; i < size; i++) {
+        input_arr[i] = size - i;
+    }
+    return input_arr;
+}
+
 #endif // HISTO_HELPER
