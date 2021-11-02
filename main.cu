@@ -78,21 +78,25 @@ double sortByKernel(uint32_t* input_array
     cudaMemcpy(input_array, output_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToDevice);
 
     for (int i = 0; i < sizeof(uint32_t) * 8; i += NUM_BITS) {
-        // TODO: call make_histogram
+        // call make_histogram
         int bit_offset = i;
+        printf("Making histogram\n")
         make_histogram<<< num_blocks_make_hist, block_size_make_hist >>>(output_array, num_elem, bit_offset, histograms, relative_offsets);
 
-        // TODO: call transpose
+        // call transpose
+        printf("transposing histogram\n")
         matTransposeKer<<< grid_transpose, block_transpose >>>(histograms, histograms_trans, histogram_size, num_histograms);
-        // TODO: call segmented scan
+        // call segmented scan
+        printf("Scanning transposed histogram\n")
         sgmScanHistogram(block_size_sgm_scan, all_histograms_size, histograms_trans, histograms_trans_scanned);
-        // TODO: call transpose
+        // call transpose
+        printf("transposing histogram\n")
         matTransposeKer<<< grid_transpose2, block_transpose2 >>>(histograms_trans_scanned, histograms, num_histograms, histogram_size);
 
         uint32_t* last_histogram = &histograms[(num_histograms - 1) * histogram_size];
         scanInc< Add<uint32_t> > ( 64, histogram_size, global_offsets, last_histogram, d_tmp_scan );
 
-        // TODO: scatter histogram
+        // scatter histogram
         histogram_scatter<<< scatter_blocks, block_size_scatter >>>(histograms, num_elem, num_elem_per_histo, global_offsets, output_array, bit_offset, relative_offsets, output_array);
     }
 
