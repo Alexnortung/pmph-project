@@ -5,6 +5,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <iostream>
+#include <functional>
 #include <stdlib.h>
 #include <math.h>
 #include <sys/time.h>
@@ -86,8 +87,8 @@ void writeRuntime(const char *fname, double elapsed) {
  */
 template<class T, class U>
 bool validate(T* output_array, U num_elems) {
-    for(U i = 0; i < num_elems-1; i++){
-        if (output_array[i] > output_array[i+1]){
+    for(U i = 1; i < num_elems; i++){
+        if (output_array[i-1] > output_array[i]){
             printf("INVALID RESULT for i:%d, (output[i-1]=%d > output[i]=%d)\n", i, output_array[i-1], output_array[i]);
             return false;
         }
@@ -104,11 +105,11 @@ bool validate(T* output_array, U num_elems) {
  * output_array     is the array that holds the sorted data
  * func             is either the funtion of sortRedByKeyCUB() or sortByKernel()
  */
-template<class T>
+template<class T, class F>
 double allocate_initiate(uint32_t num_elements
                         , T* input_array
                         , T* output_array
-                        , functiontype func){
+                        , F func){
     T* d_keys_in;
     T* d_keys_out;
     cudaSucceeded(cudaMalloc((void**) &d_keys_in, num_elements * sizeof(T)));
@@ -156,7 +157,8 @@ unsigned int* make_rand_int_array(uint32_t size) {
 float* make_rand_fl_array(uint32_t size) {
     float* rand_in_arr = (float*) malloc(size * sizeof(float));
     for(uint32_t i = 0; i < size; i++) {
-        rand_in_arr[i] = (float)rand(); //% (float) size;
+        rand_in_arr[i] = (float)rand()/((float)RAND_MAX/size); //% (float) size;
+        //rand_in_arr[i] = (float)rand(); //% (float) size;
     }
     return rand_in_arr;
 }

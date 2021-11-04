@@ -81,7 +81,8 @@ int main(int argc, char* argv[]) {
         float* out_arr_CUB  = (float*) malloc(num_elements*sizeof(float));
 
         //Run the CUB implementation
-        functiontype CUB_func = &sortRedByKeyCUB;
+        typedef double (*functiontypeFloat)(float*, float*, const uint64_t);
+        functiontypeFloat CUB_func = &sortRedByKeyCUB;
         double elapsedCUB = allocate_initiate(num_elements, input_array, out_arr_CUB, CUB_func);
 
         //bool success = validate(input_array, num_elements);
@@ -89,7 +90,7 @@ int main(int argc, char* argv[]) {
 
         printf("[");
         for(int i = 0; i < num_elements; i++){
-            printf("%d,", out_arr_CUB[i]);
+            printf("%.2f,", out_arr_CUB[i]);
         }
         printf("]");
         //printf("CUB Sorting for N=%lu runs in: %.2f us, VALID: %d\n", num_elements, elapsedCUB, success);

@@ -18,7 +18,9 @@ __global__ void make_histogram(T* input_array
         histogram[offset + threadIdx.x] = 0;
     }
 
-    int i = 0;
+    //T priv_arr[ELEM_PER_THREAD];
+    //int priv_rel_offs[ELEM_PER_THREAD];
+    //int i = 0;
     // each thread loops over ELEM_PER_THREAD elements in the block with coalesced access
     int block_offset = ELEM_PER_THREAD_MAKE_HIST * B * blockIdx.x;
     for (int idx = threadIdx.x; idx < ELEM_PER_THREAD_MAKE_HIST * B; idx += B) {
@@ -30,7 +32,7 @@ __global__ void make_histogram(T* input_array
         // increment the value in the histogram and save the relative_offset
         uint32_t relative_offset = atomicAdd(&histogram[bin], 1);
         relative_offsets[access_index] = relative_offset;
-        i++;
+        //i++;
     }
 
     // input_array[id] <-> relative_offsets[id]
