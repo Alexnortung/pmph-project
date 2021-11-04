@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "helper.cu.h"
 #include "helperKernel.cu.h"
 
@@ -12,31 +13,46 @@ __global__ void make_histogram(T* input_array
     unsigned int B = blockDim.x;
     uint64_t histogram_index = blockIdx.x;
     __shared__ uint32_t histogram[histogram_size];
+    __shared__ uint32_t histogram_scanned[histogram_size];
 
     uint64_t bitmask = (histogram_size - 1) << bit_offset;
     for (int offset = 0; offset + threadIdx.x < histogram_size; offset += B) {
         histogram[offset + threadIdx.x] = 0;
     }
 
-    //T priv_arr[ELEM_PER_THREAD];
-    //int priv_rel_offs[ELEM_PER_THREAD];
-    //int i = 0;
+    T priv_arr[ELEM_PER_THREAD_MAKE_HIST];
+    int priv_rel_offs[ELEM_PER_THREAD_MAKE_HIST];
+    uint64_t priv_bins[ELEM_PER_THREAD_MAKE_HIST];
+    int i = 0;
     // each thread loops over ELEM_PER_THREAD elements in the block with coalesced access
     int block_offset = ELEM_PER_THREAD_MAKE_HIST * B * blockIdx.x;
-    for (int idx = threadIdx.x; idx < ELEM_PER_THREAD_MAKE_HIST * B; idx += B) {
-        int access_index = idx + block_offset;
-        if (access_index >= input_arr_size) break;
-        T item = input_array[access_index];
+    for (int idx = block_offset + threadIdx.x; idx < std::min(block_offset + ELEM_PER_THREAD_MAKE_HIST * B, input_arr_size); idx += B) {
+        T item = input_array[idx];
+        priv_arr[i] = item;
         uint64_t tmp_bin = item & bitmask;
         uint64_t bin = tmp_bin >> bit_offset;
+        priv_bins[i] = bin;
         // increment the value in the histogram and save the relative_offset
         uint32_t relative_offset = atomicAdd(&histogram[bin], 1);
-        relative_offsets[access_index] = relative_offset;
-        //i++;
+        priv_rel_offs[i] = relative_offset;
+        i++;
     }
 
-    // input_array[id] <-> relative_offsets[id]
     __syncthreads();
+    // todo scan histogram;
+
+    i = 0;
+    for (int idx = block_offset + threadIdx.x; threadIdx.x < histogram_size && idx < std::min(block_offset + ELEM_PER_THREAD_MAKE_HIST * B, input_arr_size); idx += B) {
+        T item = priv_arr[i];
+        uint32_t relative_offset = priv_rel_offs[i];
+        uint64_t bin = priv_bins[i];
+        elm = scanIncBlock<Add<uint32_t>>(shmem_red, threadIdx.x);
+        histogram_scanned[threadIdx.x] = elm;
+        i++;
+    }
+    __syncthreads();
+
+    // input_array[id] <-> relative_offsets[id]
 
     for (int offset = 0; offset + threadIdx.x < histogram_size; offset += B) {
         histograms[histogram_index * histogram_size + offset + threadIdx.x] = histogram[offset + threadIdx.x];
