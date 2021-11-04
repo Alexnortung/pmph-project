@@ -1,16 +1,17 @@
 #include "helper.cu.h"
 #include "helperKernel.cu.h"
 
-__global__ void make_histogram(uint32_t* input_array
-        , const uint64_t input_arr_size
-        , uint64_t bit_offset
-        , uint32_t* histograms
-        , uint32_t* relative_offsets
+template<class T>
+__global__ void make_histogram(T* input_array
+                             , const uint64_t input_arr_size
+                             , uint64_t bit_offset
+                             , uint32_t* histograms
+                             , uint32_t* relative_offsets
 ) {
     const unsigned int histogram_size = 1 << NUM_BITS;
-    int B = blockDim.x;
+    unsigned int B = blockDim.x;
     uint64_t histogram_index = blockIdx.x;
-    __shared__ int histogram[histogram_size];
+    __shared__ uint32_t histogram[histogram_size];
 
     uint64_t bitmask = (histogram_size - 1) << bit_offset;
     for (int offset = 0; offset + threadIdx.x < histogram_size; offset += B) {
@@ -23,9 +24,9 @@ __global__ void make_histogram(uint32_t* input_array
     for (int idx = threadIdx.x; idx < ELEM_PER_THREAD_MAKE_HIST * B; idx += B) {
         int access_index = idx + block_offset;
         if (access_index >= input_arr_size) break;
-        uint32_t item = input_array[access_index];
-        uint32_t tmp_bin = item & bitmask;
-        uint32_t bin = tmp_bin >> bit_offset;
+        T item = input_array[access_index];
+        uint64_t tmp_bin = item & bitmask;
+        uint64_t bin = tmp_bin >> bit_offset;
         // increment the value in the histogram and save the relative_offset
         uint32_t relative_offset = atomicAdd(&histogram[bin], 1);
         relative_offsets[access_index] = relative_offset;
@@ -50,38 +51,39 @@ __global__ void make_histogram_flags(T num_histograms, char* flags) {
     flags[gid] = gid % num_histograms == 0; // TODO: maybe change modulo (%) ?
 }
 
+template<class T>
 __global__ void histogram_scatter(uint32_t* histograms_multi_scanned
                                 , const uint64_t input_arr_size
                                 , const uint32_t elements_per_histogram
                                 , uint32_t* global_offsets
-                                , uint32_t* items
-                                , uint32_t bit_offset
+                                , T* items
+                                , uint64_t bit_offset
                                 , uint32_t* relative_offsets
-                                , uint32_t* output
+                                , T* output
 ) {
     unsigned int histogram_size = 1 << NUM_BITS;
     unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
-    uint32_t item;
+    T item;
     uint64_t global_index;
     if (gid < input_arr_size) {
         item = items[gid];
         uint64_t bitmask = (histogram_size - 1) << bit_offset;
-        uint32_t tmp_bin = item & bitmask;
-        uint32_t bin = tmp_bin >> bit_offset;
-        uint32_t global_offset;
+        uint64_t tmp_bin = item & bitmask;
+        uint64_t bin = tmp_bin >> bit_offset;
+        unsigned int global_offset;
         if (bin <= 0) {
             global_offset = 0;
         } else {
             global_offset = global_offsets[bin - 1];
         }
-        uint32_t histogram_index = gid / elements_per_histogram;
+        unsigned int histogram_index = gid / elements_per_histogram;
         uint32_t histogram_offset;
         if (histogram_index <= 0) {
             histogram_offset = 0;
         } else {
             histogram_offset = histograms_multi_scanned[histogram_index + bin];
         }
-        uint32_t relative_offset = relative_offsets[gid];
+        unsigned int relative_offset = relative_offsets[gid];
         global_index = global_offset + histogram_offset + relative_offset;
     }
     __syncthreads();
