@@ -82,7 +82,7 @@ double sortByKernel(T* input_array
         // call make_histogram
         uint64_t bit_offset = i;
         //printf("Making histogram\n");
-        make_histogram<<< num_blocks_make_hist, block_size_make_hist >>>(output_array, num_elem, bit_offset, histograms, relative_offsets);
+        make_histogram<<< num_blocks_make_hist, block_size_make_hist, block_size_make_hist * sizeof(T) + block_size_make_hist * sizeof(uint16_t) >>>(output_array, num_elem, bit_offset, histograms, relative_offsets);
         cudaDeviceSynchronize();
 
         // call transpose

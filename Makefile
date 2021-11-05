@@ -2,7 +2,7 @@ CUB=cub-1.8.0
 
 all: cub-sort
 
-ker-sort: main.cu helper.cu.h
+ker-sort: main.cu helper.cu.h helperKernel.cu.h
 	nvcc -I$(CUB)/cub -o test-ker main.cu
 	#./test-ker 10000000
 	./test-ker 10

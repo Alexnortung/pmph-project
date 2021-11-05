@@ -33,7 +33,10 @@ class TupAdd {
     static __device__ __host__ inline uint16_t apply(const uint16_t t1, const uint16_t t2) { return t1 + t2; }
 
     static __device__ __host__ inline bool equals(const uint16_t t1, const uint16_t t2) { return (t1 == t2); }
-    static __device__ __host__ inline bool pred(const T t1) { return (el == 0); }
+    static __device__ __host__ inline bool pred(const T t1, const char bitoffset) { 
+        T mask = (1 << bitoffset);
+        return ((t1 & mask) >> bitoffset);
+    }
     static __device__ __host__ inline uint16_t remVolatile(volatile uint16_t& t)    { uint16_t res = t; return res; }
 };
 /***************************************************/
@@ -102,15 +105,17 @@ __global__ void matTransposeKer(T* A, T* B, int heightA, int widthA) {
  *************************/
 
 template<class OP, class T> 
-__device__ partition2<OP>(*T shmem_input, uint16_t* tffs){
+__device__ void partition2(T* shmem_input, uint16_t* tffs, char bitoffset){
     int gidx = blockIdx.x*blockDim.x + threadIdx.x;
+    uint16_t B = blockDim.x;
+
     T array_elem = shmem_input[gidx];
-    uint16_t bitoffset = 8;
-    uint16_t mask = (1 << bitoffset) - 1;
-    uint16_t p = OP::pred(array_elem);
+    uint16_t intsplit = 8;
+    uint16_t mask = (1 << intsplit) - 1;
+    uint16_t p = OP::pred(array_elem, bitoffset);
     uint16_t ctffs = tffs[threadIdx.x];
     ctffs = p; // isT
-    ctffs ^= (!p << bitoffset); // isF
+    ctffs ^= (!p << intsplit); // isF
     tffs[threadIdx.x] = ctffs;
     __syncthreads();
     scanInBlock <TupAdd>(threadIdx.x, tffs);
@@ -121,12 +126,11 @@ __device__ partition2<OP>(*T shmem_input, uint16_t* tffs){
         char iT = tffs[threadidx.x] & mask;
         index = iT-1;
     }else{
-        uint16_t length_bin_0 = (tffs[B-1] >> bitoffset); // & mask
-        char iF = (tffs[threadidx.x] >> bitoffset); // & mask
+        uint16_t length_bin_0 = (tffs[B-1] >> intsplit); // & mask
+        char iF = (tffs[threadidx.x] >> intsplit); // & mask
         index = length_bin_0 + iF-1;
     }
 
-    __syncthreads();
     shmem_input[index] = array_elem;
     __syncthreads();
 }
