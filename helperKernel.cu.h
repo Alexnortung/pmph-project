@@ -1,4 +1,5 @@
 #include <cuda_runtime.h>
+#include <stdio.h>
 #include "./constants.cu.h"
 
 
@@ -234,7 +235,7 @@ scanIncBlock(volatile typename OP::RedElTp* ptr, const unsigned int idx) {
     if (warpid > 0) {
         res = OP::apply(ptr[warpid-1], res);
     }
-
+    __syncthreads();
     return res;
 }
 
@@ -916,34 +917,90 @@ redAssocKernel( typename OP::RedElTp* d_tmp
  *************************/
 //inline typename OP::RedElTp
 
-template<class OP, typename T> 
+/*template<class T> 
 __device__ inline void 
-partition2(T* shmem_input, volatile typename OP::InpElTp* tffs, char bitoffset){
-    int gidx = blockIdx.x*blockDim.x + threadIdx.x;
-    uint16_t B = blockDim.x;
+partition2(volatile T* shmem_input, uint16_t* tffs, unsigned int max_elem, char bitoffset){
+    unsigned int tid = threadIdx.x;
 
-    T array_elem = shmem_input[gidx];
-    uint16_t intsplit = 8;
-    uint16_t mask = (1 << intsplit) - 1;
-    uint16_t p = OP::pred(array_elem, bitoffset);
-    uint16_t ctffs = tffs[threadIdx.x];
-    ctffs = p; // isT
-    ctffs ^= (!p << intsplit); // isF
-    tffs[threadIdx.x] = ctffs;
+    T array_elem = shmem_input[threadIdx.x];
+
+
+    //uint16_t intsplit = 8;
+    //uint16_t mask = (1 << intsplit) - 1;
+    //uint16_t p = TupAdd<T>::pred(array_elem, bitoffset);
+    //uint16_t ctffs = p;
+    //ctffs += ((1 - p) << intsplit);
+    //tffs[threadIdx.x] = ctffs;
+    //__syncthreads();
+    //scanIncBlock <TupAdd<uint16_t> >(tffs, threadIdx.x);
+    //__syncthreads();
+
+    //uint64_t index;
+    //if (p) {
+    //    char iT = tffs[threadIdx.x] & mask;
+    //    index = iT-1;
+    //} else {
+    //    uint16_t length_bin_0 = (tffs[max_elem - 1]) & mask;
+    //    uint16_t iF = (tffs[threadIdx.x] >> intsplit) & mask;
+    //    index = length_bin_0 + iF-1;
+    //}
+
+    //shmem_input[tid]= index;
+    //if (tid < max_elem ) {
+    //    //shmem_input[index] = array_elem;
+    //}
     __syncthreads();
-    scanIncBlock <OP>(tffs, threadIdx.x);
+}*/
+template<class T> 
+__device__ inline void 
+partition2(volatile T* shmem_input, volatile uint16_t* tfs, volatile uint16_t* ffs, unsigned int max_elem, char bitoffset){
+    unsigned int tid = threadIdx.x;
+
+    T array_elem = shmem_input[tid];
+    uint16_t p = TupAdd<T>::pred(array_elem, bitoffset);
+    tfs[tid] = p;
+    ffs[tid] = 1-p;
+    __syncthreads();
+    uint16_t tmp = scanIncBlock <Add<uint16_t> >(tfs, tid);
+    tfs[tid] = tmp;
+    tmp = scanIncBlock <Add<uint16_t> >(ffs, tid);
+    ffs[tid] = tmp;
     __syncthreads();
 
-    int64_t index;
-    if(p){ //Er det ikke det samme som if(p)?
-        char iT = tffs[threadIdx.x] & mask;
-        index = iT-1;
-    }else{
-        uint16_t length_bin_0 = (tffs[B-1] >> intsplit); // & mask
-        char iF = (tffs[threadIdx.x] >> intsplit); // & mask
-        index = length_bin_0 + iF-1;
+    int16_t index;
+    if (p) {
+        index = tfs[tid] - 1;
+    } else {
+        uint16_t length_bin_0 = tfs[max_elem - 1];
+        index = length_bin_0 + ffs[tid]-1;
+        //printf("bin_0: %d", length_bin_0);
     }
-
+    //printf("(%d, %d, %d, %d)\n",p, tid, tmp, index);
     shmem_input[index] = array_elem;
+
+    //uint16_t intsplit = 8;
+    //uint16_t mask = (1 << intsplit) - 1;
+    //uint16_t p = TupAdd<T>::pred(array_elem, bitoffset);
+    //uint16_t ctffs = p;
+    //ctffs += ((1 - p) << intsplit);
+    //tffs[threadIdx.x] = ctffs;
+    //__syncthreads();
+    //scanIncBlock <TupAdd<uint16_t> >(tffs, threadIdx.x);
+    //__syncthreads();
+
+    //uint64_t index;
+    //if (p) {
+    //    char iT = tffs[threadIdx.x] & mask;
+    //    index = iT-1;
+    //} else {
+    //    uint16_t length_bin_0 = (tffs[max_elem - 1]) & mask;
+    //    uint16_t iF = (tffs[threadIdx.x] >> intsplit) & mask;
+    //    index = length_bin_0 + iF-1;
+    //}
+
+    //shmem_input[tid]= index;
+    //if (tid < max_elem ) {
+    //    //shmem_input[index] = array_elem;
+    //}
     __syncthreads();
 }
