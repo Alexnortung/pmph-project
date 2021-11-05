@@ -1,6 +1,8 @@
 #include <cuda_runtime.h>
 #include "./constants.cu.h"
 
+
+
 /**
  * Generic Add operator that can be instantiated over
  *  numeric-basic types, such as int32_t, int64_t,
@@ -100,40 +102,7 @@ __global__ void matTransposeKer(T* A, T* B, int heightA, int widthA) {
     B[gidx*heightA+gidy] = A[gidy*widthA + gidx];
 }
 
-/*************************
- ******* partion 2 *******
- *************************/
 
-template<class OP, class T> 
-__device__ void partition2(T* shmem_input, uint16_t* tffs, char bitoffset){
-    int gidx = blockIdx.x*blockDim.x + threadIdx.x;
-    uint16_t B = blockDim.x;
-
-    T array_elem = shmem_input[gidx];
-    uint16_t intsplit = 8;
-    uint16_t mask = (1 << intsplit) - 1;
-    uint16_t p = OP::pred(array_elem, bitoffset);
-    uint16_t ctffs = tffs[threadIdx.x];
-    ctffs = p; // isT
-    ctffs ^= (!p << intsplit); // isF
-    tffs[threadIdx.x] = ctffs;
-    __syncthreads();
-    scanInBlock <TupAdd>(threadIdx.x, tffs);
-    __syncthreads();
-
-    int64_t index;
-    if(p){ //Er det ikke det samme som if(p)?
-        char iT = tffs[threadidx.x] & mask;
-        index = iT-1;
-    }else{
-        uint16_t length_bin_0 = (tffs[B-1] >> intsplit); // & mask
-        char iF = (tffs[threadidx.x] >> intsplit); // & mask
-        index = length_bin_0 + iF-1;
-    }
-
-    shmem_input[index] = array_elem;
-    __syncthreads();
-}
 
 //////
 //      OTHER
@@ -940,4 +909,41 @@ redAssocKernel( typename OP::RedElTp* d_tmp
     if (threadIdx.x == blockDim.x-1) {
         d_tmp[blockIdx.x] = res;
     }
+}
+
+/*************************
+ ******* partion 2 *******
+ *************************/
+//inline typename OP::RedElTp
+
+template<class OP, typename T> 
+__device__ inline void 
+partition2(T* shmem_input, volatile typename OP::InpElTp* tffs, char bitoffset){
+    int gidx = blockIdx.x*blockDim.x + threadIdx.x;
+    uint16_t B = blockDim.x;
+
+    T array_elem = shmem_input[gidx];
+    uint16_t intsplit = 8;
+    uint16_t mask = (1 << intsplit) - 1;
+    uint16_t p = OP::pred(array_elem, bitoffset);
+    uint16_t ctffs = tffs[threadIdx.x];
+    ctffs = p; // isT
+    ctffs ^= (!p << intsplit); // isF
+    tffs[threadIdx.x] = ctffs;
+    __syncthreads();
+    scanIncBlock <OP>(tffs, threadIdx.x);
+    __syncthreads();
+
+    int64_t index;
+    if(p){ //Er det ikke det samme som if(p)?
+        char iT = tffs[threadIdx.x] & mask;
+        index = iT-1;
+    }else{
+        uint16_t length_bin_0 = (tffs[B-1] >> intsplit); // & mask
+        char iF = (tffs[threadIdx.x] >> intsplit); // & mask
+        index = length_bin_0 + iF-1;
+    }
+
+    shmem_input[index] = array_elem;
+    __syncthreads();
 }

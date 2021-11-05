@@ -24,22 +24,22 @@ __global__ void make_histogram(T* input_array
         histogram[offset + threadIdx.x] = 0;
     }
 
-    T priv_arr[ELEM_PER_THREAD_MAKE_HIST];
-    int priv_rel_offs[ELEM_PER_THREAD_MAKE_HIST];
-    uint64_t priv_bins[ELEM_PER_THREAD_MAKE_HIST];
+    //T priv_arr[ELEM_PER_THREAD_MAKE_HIST];
+    //int priv_rel_offs[ELEM_PER_THREAD_MAKE_HIST];
+    //uint64_t priv_bins[ELEM_PER_THREAD_MAKE_HIST];
     int i = 0;
     // each thread loops over ELEM_PER_THREAD elements in the block with coalesced access
     uint64_t block_offset = ELEM_PER_THREAD_MAKE_HIST * B * blockIdx.x;
-    for (int idx = block_offset + threadIdx.x; idx < std::min(block_offset + ELEM_PER_THREAD_MAKE_HIST * B, input_arr_size); idx += B) {
+    for (int idx = block_offset + threadIdx.x; idx < min(block_offset + ELEM_PER_THREAD_MAKE_HIST * B, input_arr_size); idx += B) {
         T item = input_array[idx];
         elem_input[idx] = item;
-        priv_arr[i] = item;
+        //priv_arr[i] = item;
         uint64_t tmp_bin = item & bitmask;
         uint64_t bin = tmp_bin >> bit_offset;
-        priv_bins[i] = bin;
+        //priv_bins[i] = bin;
         // increment the value in the histogram and save the relative_offset
         uint32_t relative_offset = atomicAdd(&histogram[bin], 1);
-        priv_rel_offs[i] = relative_offset;
+        //priv_rel_offs[i] = relative_offset;
         i++;
     }
     
@@ -53,7 +53,7 @@ __global__ void make_histogram(T* input_array
 
     for(char j = 0; j < NUM_BITS; j++){
         char new_bit_offset = bit_offset + j;
-        partition2<TupAdd>(elem_input, tssf, new_bit_offset);
+        partition2<TupAdd,T>(elem_input, tssf, new_bit_offset);
     }
 }   
 
