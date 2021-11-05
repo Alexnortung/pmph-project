@@ -38,7 +38,7 @@ class TupAdd {
     static __device__ __host__ inline bool equals(const uint16_t t1, const uint16_t t2) { return (t1 == t2); }
     static __device__ __host__ inline bool pred(const T t1, const char bitoffset) { 
         T mask = (1 << bitoffset);
-        return ((t1 & mask) >> bitoffset);
+        return ((t1 & mask) >> bitoffset) == 0;
     }
     static __device__ __host__ inline uint16_t remVolatile(volatile uint16_t& t)    { uint16_t res = t; return res; }
 };
