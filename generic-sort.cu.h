@@ -1,26 +1,25 @@
 template<class T>
 void sgmScanHistogramTrans(const uint32_t B
-                    , const size_t N
+                    , const size_t num_histograms
                     , T* d_histo_trans_in
                     , T* d_histo_trans_out
 ) {
     const size_t histogram_size = 1 << NUM_BITS;
-    uint32_t num_histograms = N / histogram_size;
     uint32_t all_histograms_size = histogram_size * num_histograms;
     T*  d_tmp_vals;
     char* d_tmp_flag;
     char* d_inp_flag;
     cudaMalloc((void**)&d_tmp_vals, MAX_BLOCK*sizeof(T));
     cudaMalloc((void**)&d_tmp_flag, all_histograms_size*sizeof(char));
-    cudaMalloc((void**)&d_inp_flag, N * sizeof(char));
+    cudaMalloc((void**)&d_inp_flag, all_histograms_size*sizeof(char));
 
     unsigned int make_flags_block_size = B;
-    unsigned int make_flags_blocks = (N + make_flags_block_size - 1) / make_flags_block_size;
+    unsigned int make_flags_blocks = (all_histograms_size + make_flags_block_size - 1) / make_flags_block_size;
 
     make_histogram_trans_flags<<<make_flags_blocks, B>>>(num_histograms, d_inp_flag);
     //printf("Made histogram flags\n");
 
-    sgmScanInc< Add<T> >( B, N, d_histo_trans_out, d_inp_flag, d_histo_trans_in, d_tmp_vals, d_tmp_flag );
+    sgmScanInc< Add<T> >( B, all_histograms_size, d_histo_trans_out, d_inp_flag, d_histo_trans_in, d_tmp_vals, d_tmp_flag );
 
     cudaFree(d_tmp_vals);
     cudaFree(d_tmp_flag);
@@ -29,27 +28,26 @@ void sgmScanHistogramTrans(const uint32_t B
 
 template<class T>
 void sgmScanHistogram(const uint32_t B
-                    , const size_t N
+                    , const size_t num_histograms
                     , T* d_histo_in
                     , T* d_histo_out
 ) {
     const size_t histogram_size = 1 << NUM_BITS;
-    uint32_t num_histograms = N / histogram_size;
     uint32_t all_histograms_size = histogram_size * num_histograms;
     T*  d_tmp_vals;
     char* d_tmp_flag;
     char* d_inp_flag;
     cudaMalloc((void**)&d_tmp_vals, MAX_BLOCK*sizeof(T));
     cudaMalloc((void**)&d_tmp_flag, all_histograms_size*sizeof(char));
-    cudaMalloc((void**)&d_inp_flag, N * sizeof(char));
+    cudaMalloc((void**)&d_inp_flag, all_histograms_size*sizeof(char));
 
     unsigned int make_flags_block_size = B;
-    unsigned int make_flags_blocks = (N + make_flags_block_size - 1) / make_flags_block_size;
+    unsigned int make_flags_blocks = (all_histograms_size + make_flags_block_size - 1) / make_flags_block_size;
 
     make_histogram_flags<<<make_flags_blocks, B>>>(num_histograms, d_inp_flag);
     //printf("Made histogram flags\n");
 
-    sgmScanInc< Add<T> >( B, N, d_histo_out, d_inp_flag, d_histo_in, d_tmp_vals, d_tmp_flag );
+    sgmScanInc< Add<T> >( B, all_histograms_size, d_histo_out, d_inp_flag, d_histo_in, d_tmp_vals, d_tmp_flag );
 
     cudaFree(d_tmp_vals);
     cudaFree(d_tmp_flag);
@@ -125,64 +123,77 @@ double sortByKernel(T* input_array
             histograms,
             indicies
         );
-        //uint32_t* histograms_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
-        //cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        //printf("hist [");
-        //for(int i2 = 0; i2 < all_histograms_size; i2++){
-        //    //printf("%d,", histograms_cpu[i2]);
-        //}
-        //printf("]\n");
-        //free(histograms_cpu);
+        uint32_t* histograms1_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
+        cudaMemcpy(histograms1_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        printf("hist [");
+        for(int i2 = 0; i2 < all_histograms_size; i2++){
+            printf("%d,", histograms1_cpu[i2]);
+        }
+        printf("]\n");
+        free(histograms1_cpu);
 
-        sgmScanHistogram(block_size_sgm_scan, all_histograms_size, histograms, histograms_scanned);
+        sgmScanHistogram(block_size_sgm_scan, num_histograms, histograms, histograms_scanned);
 
         // call transpose
         //printf("transposing histogram\n");
         matTransposeKer<<< grid_transpose, block_transpose >>>(
             histograms,
             histograms_trans,
+            num_histograms,
+            histogram_size
+        );
+        uint32_t* histograms_trans_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
+        cudaMemcpy(histograms_trans_cpu, histograms_trans, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        printf("hist trans [");
+        for(int i2 = 0; i2 < all_histograms_size; i2++){
+            printf("%d,", histograms_trans_cpu[i2]);
+        }
+        printf("]\n");
+        free(histograms_trans_cpu);
+        // call segmented scan
+        //printf("Scanning transposed histogram\n");
+        sgmScanHistogramTrans(block_size_sgm_scan, num_histograms, histograms_trans, histograms_trans_scanned);
+
+        uint32_t* histograms_ts_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
+        cudaMemcpy(histograms_ts_cpu, histograms_trans_scanned, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        printf("hist trans scan [");
+        for(int i2 = 0; i2 < all_histograms_size; i2++){
+            printf("%d,", histograms_ts_cpu[i2]);
+        }
+        printf("]\n");
+        free(histograms_ts_cpu);
+
+        // call transpose
+        //printf("transposing histogram\n");
+        matTransposeKer<<< grid_transpose2, block_transpose2 >>>(
+            histograms_trans_scanned,
+            histograms,
             histogram_size,
             num_histograms
         );
-        //uint32_t* histograms_trans_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
-        //cudaMemcpy(histograms_trans_cpu, histograms_trans, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        //
-        ////printf("all_histograms_size: %d\n", all_histograms_size);
-        //printf("hist trans [");
-        //for(int i2 = 0; i2 < all_histograms_size; i2++){
-        //    printf("%d,", histograms_trans_cpu[i2]);
-        //}
-        //printf("]\n");
-        //free(histograms_trans_cpu);
-        // call segmented scan
-        //printf("Scanning transposed histogram\n");
-        sgmScanHistogramTrans(block_size_sgm_scan, all_histograms_size, histograms_trans, histograms_trans_scanned);
-        // call transpose
-        //printf("transposing histogram\n");
-        matTransposeKer<<< grid_transpose2, block_transpose2 >>>(histograms_trans_scanned, histograms, num_histograms, histogram_size);
-        //uint32_t* histograms_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
-        //cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        //printf("multi hist [");
-        //for(int i2 = 0; i2 < all_histograms_size; i2++){
-        //    printf("%d,", histograms_cpu[i2]);
-        //}
-        //printf("]\n");
-        //free(histograms_cpu);
+
+        uint32_t* histograms_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
+        cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        printf("multi hist [");
+        for(int i2 = 0; i2 < all_histograms_size; i2++){
+            printf("%d,", histograms_cpu[i2]);
+        }
+        printf("]\n");
+        free(histograms_cpu);
 
 
         uint32_t* last_histogram = &histograms[(num_histograms - 1) * histogram_size];
         scanInc< Add<uint32_t> > ( 64, histogram_size, global_offsets, last_histogram, d_tmp_scan );
 
 
-        //uint32_t* global_offsets_cpu = (uint32_t*)malloc(histogram_size * sizeof(uint32_t));
-        //cudaMemcpy(global_offsets_cpu, global_offsets, histogram_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        //printf("all_histograms_size: %d\n", all_histograms_size);
-        //printf("glb_offs [");
-        //for(int i2 = 0; i2 < histogram_size; i2++){
-        //    printf("%d,", global_offsets_cpu[i2]);
-        //}
-        //printf("]\n");
-        //free(global_offsets_cpu);
+        uint32_t* global_offsets_cpu = (uint32_t*)malloc(histogram_size * sizeof(uint32_t));
+        cudaMemcpy(global_offsets_cpu, global_offsets, histogram_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        printf("glb_offs [");
+        for(int i2 = 0; i2 < histogram_size; i2++){
+            printf("%d,", global_offsets_cpu[i2]);
+        }
+        printf("]\n");
+        free(global_offsets_cpu);
 
         // scatter histogram
         histogram_scatter<<< scatter_blocks, block_size_scatter >>>(

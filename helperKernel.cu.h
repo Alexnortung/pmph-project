@@ -99,8 +99,8 @@ __global__ void matTransposeKer(T* A, T* B, int heightA, int widthA) {
     int gidy = blockIdx.y*blockDim.y + threadIdx.y; 
 
     if( (gidx >= widthA) || (gidy >= heightA) ) return;
-
-    B[gidx*heightA+gidy] = A[gidy*widthA + gidx];
+    T tmp = A[gidy*widthA + gidx];
+    B[gidx*heightA+gidy] = tmp;
 }
 
 
