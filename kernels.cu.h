@@ -30,13 +30,16 @@ __global__ void make_histogram(T* input_array
     uint64_t block_offset = ELEM_PER_THREAD_MAKE_HIST * B * blockIdx.x;
     for (int idx = block_offset + threadIdx.x; idx < min(block_offset + ELEM_PER_THREAD_MAKE_HIST * B, input_arr_size) && threadIdx.x < B; idx += B) {
         T item = input_array[idx];
-        elem_input[idx] = item;
+        elem_input[B * i + threadIdx.x] = item;
         uint64_t tmp_bin = item & bitmask;
         uint64_t bin = tmp_bin >> bit_offset;
         // increment the value in the histogram and save the relative_offset
         uint32_t relative_offset = atomicAdd(&histogram[bin], 1);
         //printf("relative_off: %d\n", relative_offset);
         i++;
+        if (blockIdx.x == 1) {
+            //printf("idx: %d, item %d", idx, item, );
+        }
     }
     
     __syncthreads();
@@ -49,11 +52,16 @@ __global__ void make_histogram(T* input_array
     if (B_all * (blockIdx.x + 1) > input_arr_size) {
         partiton_max_elem = input_arr_size % partiton_max_elem;
     }
+    if (bit_offset == 0 && blockIdx.x == 1) {
+        //printf("tid: %d, elm_inp: %d\n",threadIdx.x, elem_input[threadIdx.x]);
+        //printf("boffset: %d\n", block_offset);
+    }
     for(char j = 0; j < NUM_BITS; j++){
         char new_bit_offset = bit_offset + j;
         partition2(elem_input, tfs, ffs, partiton_max_elem, new_bit_offset);
         __syncthreads();
     }
+    
     for (int idx = threadIdx.x; block_offset + idx < min(input_arr_size, block_offset + B_all); idx += B_all) {
         input_array[block_offset + idx] = elem_input[idx]; 
     }
@@ -129,6 +137,6 @@ __global__ void histogram_scatter(uint32_t* histograms_multi_scanned
     }
     __syncthreads();
     if (gid < input_arr_size) {
-        //output[global_index] = item;
+        output[global_index] = item;
     }
 }

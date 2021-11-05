@@ -64,14 +64,18 @@ double sortByKernel(T* input_array
 
     size_t histogram_size = 1 << NUM_BITS;
 
-    unsigned int block_size_make_hist = 64;
-    // get ceil of num_elem / ELEM_PER_THREAD_MAKE_HIST
-    uint32_t num_threads_make_hist = (num_elem + ELEM_PER_THREAD_MAKE_HIST -1)/ELEM_PER_THREAD_MAKE_HIST; // num threads for make_histogram
+    unsigned int block_size_make_hist = 32;
+    // get ceil of num_elem / ELEM_PER_THREAD_MAKE_HIST // total threads //
+    //uint32_t num_threads_make_hist = (num_elem + ELEM_PER_THREAD_MAKE_HIST -1)/ELEM_PER_THREAD_MAKE_HIST; // num threads for make_histogram
+    uint32_t num_threads_make_hist = num_elem; // num threads for make_histogram
     // get ceil of num_threads_make_hist / block_size_make_hist
     unsigned int num_blocks_make_hist = (num_threads_make_hist + block_size_make_hist - 1) / block_size_make_hist;
     uint32_t num_histograms = num_blocks_make_hist;
     uint32_t all_histograms_size = num_histograms * histogram_size;
-    const uint32_t num_elem_per_histo = num_threads_make_hist * ELEM_PER_THREAD_MAKE_HIST; // elements per histogram
+    const uint32_t num_elem_per_histo = (num_threads_make_hist + num_blocks_make_hist - 1) / num_blocks_make_hist; // elements per histogram
+    printf("num_blocks_make_hist: %d\n", num_blocks_make_hist);
+    printf("num_elem_per_histo: %d\n", num_elem_per_histo);
+
     
     uint32_t* histograms; // array of total histograms
     uint16_t* indicies;
@@ -121,18 +125,14 @@ double sortByKernel(T* input_array
             histograms,
             indicies
         );
-        uint32_t* histograms_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
-        cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        printf("hist [");
-        for(int i2 = 0; i2 < all_histograms_size; i2++){
-            //printf("%d,", histograms_cpu[i2]);
-        }
-        printf("]\n");
-        free(histograms_cpu);
-        uint32_t* last_histogram = &histograms[(num_histograms - 1) * histogram_size];
-        scanInc< Add<uint32_t> > ( 64, histogram_size, global_offsets, last_histogram, d_tmp_scan );
-        uint32_t* global_offsets_cpu = (uint32_t*)malloc(histogram_size * sizeof(uint32_t));
-        cudaMemcpy(global_offsets_cpu, global_offsets, histogram_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        //uint32_t* histograms_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
+        //cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        //printf("hist [");
+        //for(int i2 = 0; i2 < all_histograms_size; i2++){
+        //    //printf("%d,", histograms_cpu[i2]);
+        //}
+        //printf("]\n");
+        //free(histograms_cpu);
 
         sgmScanHistogram(block_size_sgm_scan, all_histograms_size, histograms, histograms_scanned);
 
@@ -162,19 +162,20 @@ double sortByKernel(T* input_array
         matTransposeKer<<< grid_transpose2, block_transpose2 >>>(histograms_trans_scanned, histograms, num_histograms, histogram_size);
         //uint32_t* histograms_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
         //cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        
-        //printf("all_histograms_size: %d\n", all_histograms_size);
         //printf("multi hist [");
         //for(int i2 = 0; i2 < all_histograms_size; i2++){
         //    printf("%d,", histograms_cpu[i2]);
         //}
         //printf("]\n");
         //free(histograms_cpu);
-        //uint32_t* last_histogram = &histograms[(num_histograms - 1) * histogram_size];
-        //scanInc< Add<uint32_t> > ( 64, histogram_size, global_offsets, last_histogram, d_tmp_scan );
+
+
+        uint32_t* last_histogram = &histograms[(num_histograms - 1) * histogram_size];
+        scanInc< Add<uint32_t> > ( 64, histogram_size, global_offsets, last_histogram, d_tmp_scan );
+
+
         //uint32_t* global_offsets_cpu = (uint32_t*)malloc(histogram_size * sizeof(uint32_t));
         //cudaMemcpy(global_offsets_cpu, global_offsets, histogram_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        
         //printf("all_histograms_size: %d\n", all_histograms_size);
         //printf("glb_offs [");
         //for(int i2 = 0; i2 < histogram_size; i2++){
@@ -194,6 +195,15 @@ double sortByKernel(T* input_array
             bit_offset,
             output_array
         );
+        //uint32_t* output_array_cpu = (uint32_t*)malloc(num_elem * sizeof(uint32_t));
+        //cudaMemcpy(output_array_cpu, output_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        //printf("output iter: %d [", i);
+        //for(int i2 = 0; i2 < num_elem; i2++){
+        //    printf("%d,", output_array_cpu[i2]);
+        //}
+        //printf("]\n");
+        //free(output_array_cpu);
+
     }
     gettimeofday(&t_end, NULL);
     timeval_subtract(&t_diff, &t_end, &t_start);
