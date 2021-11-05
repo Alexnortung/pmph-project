@@ -21,6 +21,21 @@ class Add {
     static __device__ __host__ inline T remVolatile(volatile T& t)    { T res = t; return res; }
 };
 
+template<class T>
+class TupAdd {
+  public:
+    typedef uint16_t InpElTp;
+    typedef uint16_t RedElTp;
+    static const bool commutative = true;
+    static __device__ __host__ inline uint16_t identInp()                    { return 0;    }
+    static __device__ __host__ inline uint16_t mapFun(const uint16_t& el)    { return el;   }
+    static __device__ __host__ inline uint16_t identity()                    { return 0;    }
+    static __device__ __host__ inline uint16_t apply(const uint16_t t1, const uint16_t t2) { return t1 + t2; }
+
+    static __device__ __host__ inline bool equals(const uint16_t t1, const uint16_t t2) { return (t1 == t2); }
+    static __device__ __host__ inline bool pred(const T t1) { return (el == 0); }
+    static __device__ __host__ inline uint16_t remVolatile(volatile uint16_t& t)    { uint16_t res = t; return res; }
+};
 /***************************************************/
 /*** Generic Value-Flag Tuple for Segmented Scan ***/
 /***************************************************/
@@ -70,8 +85,8 @@ class LiftOP {
 };
 
 /*************************
- * TRANSPOSE
- * **********************/
+ ******* TRANSPOSE *******
+ *************************/
 template <class T>
 __global__ void matTransposeKer(T* A, T* B, int heightA, int widthA) {
     int gidx = blockIdx.x*blockDim.x + threadIdx.x;
@@ -80,6 +95,40 @@ __global__ void matTransposeKer(T* A, T* B, int heightA, int widthA) {
     if( (gidx >= widthA) || (gidy >= heightA) ) return;
 
     B[gidx*heightA+gidy] = A[gidy*widthA + gidx];
+}
+
+/*************************
+ ******* partion 2 *******
+ *************************/
+
+template<class OP, class T> 
+__device__ partition2<OP>(*T shmem_input, uint16_t* tffs){
+    int gidx = blockIdx.x*blockDim.x + threadIdx.x;
+    T array_elem = shmem_input[gidx];
+    uint16_t bitoffset = 8;
+    uint16_t mask = (1 << bitoffset) - 1;
+    uint16_t p = OP::pred(array_elem);
+    uint16_t ctffs = tffs[threadIdx.x];
+    ctffs = p; // isT
+    ctffs ^= (!p << bitoffset); // isF
+    tffs[threadIdx.x] = ctffs;
+    __syncthreads();
+    scanInBlock <TupAdd>(threadIdx.x, tffs);
+    __syncthreads();
+
+    int64_t index;
+    if(p){ //Er det ikke det samme som if(p)?
+        char iT = tffs[threadidx.x] & mask;
+        index = iT-1;
+    }else{
+        uint16_t length_bin_0 = (tffs[B-1] >> bitoffset); // & mask
+        char iF = (tffs[threadidx.x] >> bitoffset); // & mask
+        index = length_bin_0 + iF-1;
+    }
+
+    __syncthreads();
+    shmem_input[index] = array_elem;
+    __syncthreads();
 }
 
 //////
