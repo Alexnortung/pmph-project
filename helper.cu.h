@@ -96,6 +96,17 @@ bool validate(T* output_array, U num_elems) {
     return true;
 }
 
+template<class T, class U>
+bool validate_arrays(T* output_array, T* correct_out_arr, U num_elems) {
+    for(U i = 0; i < num_elems; i++){
+        if (fabs(output_array[i] - correct_out_arr[i]) > 0.001) {
+            printf("INVALID RESULT for i:%d, (output[i]=%d != correct[i]=%d)\n", i, output_array[i], correct_out_arr[i]);
+            return false;
+        }
+    }
+    return true;
+}
+
 
 // This function allocates cuda memory for either the CUB or kernel
 // implementation.

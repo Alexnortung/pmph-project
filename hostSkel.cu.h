@@ -194,7 +194,7 @@ void scanInc( const uint32_t     B     // desired CUDA block size ( <= 1024, mul
     const uint32_t num_blocks = getNumBlocks<CHUNK>(N, B, &num_seq_chunks);    
     const size_t   shmem_size = B * max_tp_size * CHUNK;
 
-    //
+    
     redAssocKernel<OP, CHUNK><<< num_blocks, B, shmem_size >>>(d_tmp, d_in, N, num_seq_chunks);
 
     {
@@ -241,16 +241,16 @@ void sgmScanInc( const uint32_t     B     // desired CUDA block size ( <= 1024, 
     const size_t   shmem_size = B * max( max_tp_size * CHUNK, tot_red_sz );
     //printf("redSgmScanKernel starting\n");
 
-    redSgmScanKernel<OP, CHUNK><<< num_blocks, B, shmem_size >>>
-        (d_tmp_flags, d_tmp_vals, d_flags, d_inp, N, num_seq_chunks);
-    //printf("redSgmScanKernel done\n");
-
-    {
-        const uint32_t block_size = closestMul32(num_blocks);
-        const size_t shmem_size = block_size * ( sizeof(typename OP::RedElTp) + sizeof(char) );
-        sgmScan1Block<OP><<< 1, block_size, shmem_size >>>( d_tmp_vals, d_tmp_flags, num_blocks );
-        //printf("sgmScan1Block done\n");
-    }
+     redSgmScanKernel<OP, CHUNK><<< num_blocks, B, shmem_size >>>
+         (d_tmp_flags, d_tmp_vals, d_flags, d_inp, N, num_seq_chunks);
+     //printf("redSgmScanKernel done\n");
+ 
+     {
+         const uint32_t block_size = closestMul32(num_blocks);
+         const size_t shmem_size = block_size * ( sizeof(typename OP::RedElTp) + sizeof(char) );
+         sgmScan1Block<OP><<< 1, block_size, shmem_size >>>( d_tmp_vals, d_tmp_flags, num_blocks );
+         //printf("sgmScan1Block done\n");
+     }
 
     sgmScan3rdKernel<OP, CHUNK><<< num_blocks, B, shmem_size >>>
         (d_out, d_inp, d_flags, d_tmp_vals, d_tmp_flags, N, num_seq_chunks);

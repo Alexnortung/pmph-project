@@ -125,6 +125,7 @@ double sortByKernel(T* input_array
             bit_offset,
             histograms
         );
+        //cudaDeviceSynchronize();
         //uint32_t* histograms1_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
         //cudaMemcpy(histograms1_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
         //printf("hist [");
@@ -135,6 +136,7 @@ double sortByKernel(T* input_array
         //free(histograms1_cpu);
 
         sgmScanHistogram(block_size_sgm_scan, num_histograms, histograms, histograms_scanned);
+        //cudaDeviceSynchronize();
 
         //uint32_t* histograms_scanned_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
         //cudaMemcpy(histograms_scanned_cpu, histograms_scanned, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
@@ -153,6 +155,8 @@ double sortByKernel(T* input_array
             num_histograms,
             histogram_size
         );
+        //cudaDeviceSynchronize();
+
         //uint32_t* histograms_trans_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
         //cudaMemcpy(histograms_trans_cpu, histograms_trans, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
         //printf("hist trans [");
@@ -164,6 +168,7 @@ double sortByKernel(T* input_array
         // call segmented scan
         //printf("Scanning transposed histogram\n");
         sgmScanHistogramTrans(block_size_sgm_scan, num_histograms, histograms_trans, histograms_trans_scanned);
+        //cudaDeviceSynchronize();
 
         //uint32_t* histograms_ts_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
         //cudaMemcpy(histograms_ts_cpu, histograms_trans_scanned, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
@@ -182,6 +187,7 @@ double sortByKernel(T* input_array
             histogram_size,
             num_histograms
         );
+        //cudaDeviceSynchronize();
 
         //uint32_t* histograms_cpu = (uint32_t*)malloc(all_histograms_size * sizeof(uint32_t));
         //cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
@@ -195,6 +201,7 @@ double sortByKernel(T* input_array
 
         uint32_t* last_histogram = &histograms[(num_histograms - 1) * histogram_size];
         scanInc< Add<uint32_t> > ( 64, histogram_size, global_offsets, last_histogram, d_tmp_scan );
+        //cudaDeviceSynchronize();
 
 
         //uint32_t* global_offsets_cpu = (uint32_t*)malloc(histogram_size * sizeof(uint32_t));
@@ -217,6 +224,9 @@ double sortByKernel(T* input_array
             bit_offset,
             output_array
         );
+        //cudaDeviceSynchronize();
+
+        //if (i != 1) continue;
         //uint32_t* output_array_cpu = (uint32_t*)malloc(num_elem * sizeof(uint32_t));
         //cudaMemcpy(output_array_cpu, output_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToHost);
         //printf("output iter: %d [", i);
