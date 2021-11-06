@@ -69,7 +69,6 @@ double sortByKernel(T* input_array
     uint32_t all_histograms_size = num_histograms * histogram_size;
     const uint32_t num_elem_per_histo = block_size_make_hist;//(num_threads_make_hist + num_blocks_make_hist - 1) / num_blocks_make_hist; // elements per histogram
     uint32_t extern_shared_mem_make_hist = block_size_make_hist * sizeof(T) + block_size_make_hist * sizeof(uint16_t) + block_size_make_hist * sizeof(uint16_t);
-    uint32_t shared_mem_usage = histogram_size * num_histograms * sizeof(uint32_t) + extern_shared_mem_make_hist * num_blocks_make_hist;
 
     
     uint32_t* histograms; // array of total histograms

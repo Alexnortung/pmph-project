@@ -15,11 +15,9 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
     //Create input_array with random values
-    //uint32_t* input_array = make_rand_int_array(num_elements);
     float* input_array = make_rand_fl_array(num_elements);
     //uint32_t* input_array = make_rand_int_array(num_elements);
     
-    printf("CUB Sorting for N=%lu\n", num_elements);
     int num_test = 10;
     for(int i = 0; i < num_test; i++){
         //Allocate for output_array that will hold the results for CUB
@@ -31,17 +29,11 @@ int main(int argc, char* argv[]) {
         functiontypeFloat CUB_func = &sortRedByKeyCUB;
         double elapsedCUB = allocate_initiate(num_elements, input_array, out_arr_CUB, CUB_func);
 
-        //bool success = validate(input_array, num_elements);
-        //bool success = validate(out_f_CUB, num_elements);
+        bool success = validate(out_arr_CUB, num_elements);
 
-        printf("[");
-        for(int i = 0; i < num_elements; i++){
-            printf("%.2f,", out_arr_CUB[i]);
+        if (!success || i == 0) {
+            printf("CUB Sorting for N=%lu runs in: %.2f us, VALID: %d\n", num_elements, elapsedCUB, success);
         }
-        printf("]");
-        //printf("CUB Sorting for N=%lu runs in: %.2f us, VALID: %d\n", num_elements, elapsedCUB, success);
-        //printf("CUB Sorting for N=%lu runs in: %.2f us\n", num_elements, elapsedCUB);
-        printf("%.2f\n", elapsedCUB);
         
         free(out_arr_CUB);
     }
