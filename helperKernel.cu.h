@@ -915,42 +915,6 @@ redAssocKernel( typename OP::RedElTp* d_tmp
 /*************************
  ******* partion 2 *******
  *************************/
-//inline typename OP::RedElTp
-
-/*template<class T> 
-__device__ inline void 
-partition2(volatile T* shmem_input, uint16_t* tffs, unsigned int max_elem, char bitoffset){
-    unsigned int tid = threadIdx.x;
-
-    T array_elem = shmem_input[threadIdx.x];
-
-
-    //uint16_t intsplit = 8;
-    //uint16_t mask = (1 << intsplit) - 1;
-    //uint16_t p = TupAdd<T>::pred(array_elem, bitoffset);
-    //uint16_t ctffs = p;
-    //ctffs += ((1 - p) << intsplit);
-    //tffs[threadIdx.x] = ctffs;
-    //__syncthreads();
-    //scanIncBlock <TupAdd<uint16_t> >(tffs, threadIdx.x);
-    //__syncthreads();
-
-    //uint64_t index;
-    //if (p) {
-    //    char iT = tffs[threadIdx.x] & mask;
-    //    index = iT-1;
-    //} else {
-    //    uint16_t length_bin_0 = (tffs[max_elem - 1]) & mask;
-    //    uint16_t iF = (tffs[threadIdx.x] >> intsplit) & mask;
-    //    index = length_bin_0 + iF-1;
-    //}
-
-    //shmem_input[tid]= index;
-    //if (tid < max_elem ) {
-    //    //shmem_input[index] = array_elem;
-    //}
-    __syncthreads();
-}*/
 template<class T> 
 __device__ inline void 
 partition2(volatile T* shmem_input, volatile uint16_t* tfs, volatile uint16_t* ffs, unsigned int max_elem, char bitoffset){
@@ -974,9 +938,7 @@ partition2(volatile T* shmem_input, volatile uint16_t* tfs, volatile uint16_t* f
         uint16_t length_bin_0 = tfs[max_elem - 1];
         index = length_bin_0 + ffs[tid]-1;
     }
-    //if (bitoffset == 0 && array_elem == 0) {
-    //    printf("(index: %d, arr_el: %d)", index, array_elem);
-    //}
+
     if (threadIdx.x < max_elem) {
         shmem_input[index] = array_elem;
     }

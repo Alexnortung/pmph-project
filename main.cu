@@ -37,18 +37,6 @@ int main(int argc, char* argv[]) {
     functiontype cub_func = &sortRedByKeyCUB;
     double elapsedCUB = allocate_initiate(num_elements, input_array, out_arr_cub, cub_func);
 
-    //printf("input: [");
-    //for(int i = 0; i < num_elements; i++){
-    //    printf("%d,", input_array[i]);
-    //}
-    //printf("]\n");
-    //printf("output: [");
-    //for(int i = 0; i < num_elements; i++){
-    //    printf("%d,", out_arr_ker[i]);
-    //}
-    //printf("]\n");
-
-    
     bool success = validate(out_arr_ker, num_elements);
     bool success2 = validate_arrays(out_arr_ker, out_arr_cub, num_elements);
 
