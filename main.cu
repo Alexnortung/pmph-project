@@ -32,16 +32,16 @@ int main(int argc, char* argv[]) {
     functiontype ker_func = &sortByKernel;
     double elapsedKer = allocate_initiate(num_elements, input_array, out_arr_ker, ker_func);
 
-    printf("input: [");
-    for(int i = 0; i < num_elements; i++){
-        printf("%d,", input_array[i]);
-    }
-    printf("]\n");
-    printf("output: [");
-    for(int i = 0; i < num_elements; i++){
-        printf("%d,", out_arr_ker[i]);
-    }
-    printf("]\n");
+    //printf("input: [");
+    //for(int i = 0; i < num_elements; i++){
+    //    printf("%d,", input_array[i]);
+    //}
+    //printf("]\n");
+    //printf("output: [");
+    //for(int i = 0; i < num_elements; i++){
+    //    printf("%d,", out_arr_ker[i]);
+    //}
+    //printf("]\n");
 
     
     bool success = validate(out_arr_ker, num_elements);
