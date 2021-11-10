@@ -3,7 +3,7 @@ CUB=cub-1.8.0
 all: ker-sort cub-sort
 
 ker-sort: main.cu helper.cu.h helperKernel.cu.h
-	nvcc -I$(CUB)/cub -o test-ker main.cu
+	nvcc -O3 -arch=compute_35 -I$(CUB)/cub -o test-ker main.cu
 	#./test-ker 10000000
 	./test-ker 64
 
