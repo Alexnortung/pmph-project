@@ -10,50 +10,93 @@ __global__ void make_histogram(T* input_array
                              , uint32_t* histograms
 ) {
     const unsigned int histogram_size = 1 << NUM_BITS;
-    const uint32_t B = (blockDim.x + ELEM_PER_THREAD_MAKE_HIST - 1) / ELEM_PER_THREAD_MAKE_HIST;
-    const uint32_t B_all = blockDim.x;
+    const uint32_t B = blockDim.x;
     uint64_t histogram_index = blockIdx.x;
     __shared__ uint32_t histogram[histogram_size];
-    extern __shared__ T es[]; // external shared
-    T* elem_input = es; // start of external shared should be used in partition
-    uint16_t* tfs = (uint16_t*)&elem_input[B_all]; // the other part of the share array
-    uint16_t* ffs = (uint16_t*)&tfs[B_all]; // the other part of the share array
+    //extern __shared__ T es[]; // external shared
+    //T* elem_input = es; // start of external shared should be used in partition
+    //uint16_t* tfs = (uint16_t*)&elem_input[B]; // the other part of the share array
+    //uint16_t* ffs = (uint16_t*)&tfs[B]; // the other part of the share array
 
     uint64_t bitmask = (histogram_size - 1) << bit_offset;
-    for (int idx = threadIdx.x; idx < histogram_size; idx += B_all) {
+    uint64_t block_offset = B * blockIdx.x;
+
+    for (int idx = threadIdx.x; idx < histogram_size; idx += B) {
         histogram[idx] = 0;
     }
 
     // each thread loops over ELEM_PER_THREAD elements in the block with coalesced access
-    uint64_t block_offset = ELEM_PER_THREAD_MAKE_HIST * B * blockIdx.x;
-    for (int idx = block_offset + threadIdx.x; idx < min(block_offset + ELEM_PER_THREAD_MAKE_HIST * B, input_arr_size) && threadIdx.x < B; idx += B) {
-        T item = input_array[idx];
-        elem_input[idx - block_offset] = item;
+    //for (int idx = block_offset + threadIdx.x; idx < min(block_offset + ELEM_PER_THREAD_MAKE_HIST * B, input_arr_size) && threadIdx.x < B; idx += B) {
+    //    T item = input_array[idx];
+    //    elem_input[idx - block_offset] = item;
+    //    uint64_t tmp_bin = item & bitmask;
+    //    uint64_t bin = tmp_bin >> bit_offset;
+    //    // increment the value in the histogram and save the relative_offset
+    //    uint32_t relative_offset = atomicAdd(&histogram[bin], 1);
+    //}
+    if ((block_offset + threadIdx.x) < input_arr_size) {
+        T item = input_array[block_offset + threadIdx.x];
+        //elem_input[threadIdx.x] = item;
         uint64_t tmp_bin = item & bitmask;
         uint64_t bin = tmp_bin >> bit_offset;
         // increment the value in the histogram and save the relative_offset
-        uint32_t relative_offset = atomicAdd(&histogram[bin], 1);
+        //printf("bin: %d", bin);
+        atomicAdd(&histogram[bin], 1);
     }
-    
+
     __syncthreads();
 
-    for (int idx = threadIdx.x; idx < histogram_size; idx += B_all) {
+    for (int idx = threadIdx.x; idx < histogram_size; idx += B) {
         histograms[histogram_index * histogram_size + idx] = histogram[idx];
     }
 
-    unsigned partiton_max_elem = B_all;
-    if (B_all * (blockIdx.x + 1) > input_arr_size) {
-        partiton_max_elem = input_arr_size % B_all;
-    }
+    //unsigned partiton_max_elem = B;
+    //if (B * (blockIdx.x + 1) > input_arr_size) {
+    //    partiton_max_elem = input_arr_size % B;
+    //}
 
+    //for(char j = 0; j < NUM_BITS; j++){
+    //    char new_bit_offset = bit_offset + j;
+    //    partition2(elem_input, tfs, ffs, partiton_max_elem, new_bit_offset);
+    //    __syncthreads();
+    //}
+    //
+    ////for (uint32_t idx = threadIdx.x; block_offset + idx < min(input_arr_size, block_offset + B); idx += B) {
+    ////    input_array[block_offset + idx] = elem_input[idx]; 
+    ////}
+    //if ((block_offset + threadIdx.x) < input_arr_size) {
+    //    input_array[block_offset + threadIdx.x] = elem_input[threadIdx.x];
+    //}
+}
+
+template<class T>
+__global__ void sort_group(T* input_array
+                         , const uint64_t input_arr_size
+                         , uint64_t bit_offset
+) {
+    uint32_t tid = threadIdx.x;
+    uint64_t block_offset = blockDim.x * blockIdx.x;
+    uint32_t gid = block_offset + tid;
+    extern __shared__ T es[]; // external shared
+    T* shmem_inp = es; // start of external shared should be used in partition
+    uint16_t* tfs = (uint16_t*)&shmem_inp[blockDim.x]; // the other part of the share array
+    uint16_t* ffs = (uint16_t*)&tfs[blockDim.x]; // the other part of the share array
+    // copy to shared memory
+    uint32_t max_elem = blockDim.x;
+    if (block_offset + blockDim.x > input_arr_size) {
+        // last block
+        max_elem = input_arr_size - block_offset;
+    }
+    if (gid < input_arr_size) {
+        shmem_inp[tid] = input_array[gid];
+    }
     for(char j = 0; j < NUM_BITS; j++){
         char new_bit_offset = bit_offset + j;
-        partition2(elem_input, tfs, ffs, partiton_max_elem, new_bit_offset);
+        partition2(shmem_inp, tfs, ffs, max_elem, new_bit_offset);
         __syncthreads();
     }
-    
-    for (uint32_t idx = threadIdx.x; block_offset + idx < min(input_arr_size, block_offset + B_all); idx += B_all) {
-        input_array[block_offset + idx] = elem_input[idx]; 
+    if (gid < input_arr_size) {
+        input_array[gid] = shmem_inp[tid];
     }
 }
 
@@ -90,7 +133,6 @@ __global__ void histogram_scatter(uint32_t* histograms_multi_scanned
 ) {
     unsigned int histogram_size = 1 << NUM_BITS;
     uint32_t gid = blockIdx.x*blockDim.x + threadIdx.x;
-    uint32_t global_index;
     T item;
     if (gid < input_arr_size) {
         item = items[gid];
@@ -106,7 +148,7 @@ __global__ void histogram_scatter(uint32_t* histograms_multi_scanned
             before_offset = histograms_multi_scanned[histogram_size * (histogram_index - 1) + bin];
         }
         unsigned int histogram_thread_id = gid % elements_per_histogram;
-        uint32_t global_offset = global_offsets[bin];
+        uint32_t global_offset;
         if (bin <= 0) {
             global_offset = 0;
         } else {
@@ -118,10 +160,7 @@ __global__ void histogram_scatter(uint32_t* histograms_multi_scanned
         } else {
             histogram_offset_index = histograms_scanned[histogram_offset + bin - 1];
         }
-        global_index = global_offset + before_offset + (histogram_thread_id - histogram_offset_index);
-    }
-    __syncthreads();
-    if (gid < input_arr_size) {
+        uint32_t global_index = global_offset + before_offset + (histogram_thread_id - histogram_offset_index);
         output[global_index] = item;
     }
     __syncthreads();

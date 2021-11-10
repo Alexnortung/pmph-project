@@ -29,21 +29,23 @@ void seq_make_histogram(T* input_array
     uint64_t bitmask = (histogram_size - 1) << bit_offset;
 
     uint32_t all_histograms_size = histogram_size * num_histograms;
-    printf("all_histograms_size is: %d\n", all_histograms_size);
+    //printf("all_histograms_size is: %d\n", all_histograms_size);
     for (unsigned int i = 0; i < all_histograms_size; i++) {
-        printf("setting %d to 0 in histograms\n", i);
+        //printf("setting %d to 0 in histograms\n", i);
         histograms[i] = 0;
     }
-    printf("input_array_size is: %d\n", input_arr_size);
-    printf("first item is: %d\n", input_array[0]);
+    //printf("input_array_size is: %d\n", input_arr_size);
+    //printf("first item is: %d\n", input_array[0]);
+    //printf("elements_per_histogram: %d\n", elements_per_histogram);
+    //printf("bitmask: %x; bitmask shifted: %x\n", bitmask, bitmask >> bit_offset);
     for (unsigned int i = 0; i < input_arr_size; i++) {
-        printf("index is: %d, item is: %d\n", i, input_array[i]);
+        //printf("index is: %d, item is: %d\n", i, input_array[i]);
         T item = input_array[i];
         uint32_t histogram_index = i / elements_per_histogram;
         uint32_t* histogram = &histograms[histogram_index * histogram_size];
         uint64_t tmp_bin = item & bitmask;
         uint64_t bin = tmp_bin >> bit_offset;
-        printf("bin is: %d\n", bin);
+        //printf("bin is: %d\n", (uint32_t)bin);
         histogram[bin] += 1;
     }
 }
@@ -126,6 +128,7 @@ void seq_partition2(T* shmem_input, unsigned int max_elem, char bitoffset){
     uint16_t* tfs = (uint16_t*)malloc(max_elem * sizeof(uint16_t));
     uint16_t* ffs= (uint16_t*)malloc(max_elem * sizeof(uint16_t));
     T* output = (T*)malloc(max_elem * sizeof(T));
+    //printf("max_elem: %d\n", max_elem);
     for (unsigned int i = 0; i < max_elem; i++) {
         T array_elem = shmem_input[i];
         uint16_t p = TupAdd<T>::pred(array_elem, bitoffset);
