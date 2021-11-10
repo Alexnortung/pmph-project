@@ -62,7 +62,7 @@ double sortByKernel(T* input_array
 
     size_t histogram_size = 1 << NUM_BITS;
 
-    unsigned int block_size_make_hist = 32;
+    unsigned int block_size_make_hist = 256;
     // get ceil of num_threads_make_hist / block_size_make_hist
     unsigned int num_blocks_make_hist = (num_elem + block_size_make_hist - 1) / block_size_make_hist;
     uint32_t num_histograms = num_blocks_make_hist;

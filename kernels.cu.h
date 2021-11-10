@@ -21,6 +21,7 @@ __global__ void make_histogram(T* input_array
     for (int idx = threadIdx.x; idx < histogram_size; idx += B) {
         histogram[idx] = 0;
     }
+    __syncthreads();
     if (gid < input_arr_size) {
         T item = input_array[gid];
         //elem_input[threadIdx.x] = item;
