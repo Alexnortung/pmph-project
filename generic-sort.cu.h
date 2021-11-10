@@ -124,7 +124,8 @@ double sortByKernel(T* input_array
     //cudaMemcpy(output_array, input_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToDevice);
     printf("memcpy %d %d\n", num_elem, num_elem * sizeof(uint32_t));
     //memcpy(output_array, input_array, num_elem * sizeof(uint32_t));
-    cudaMemcpy(output_array, input_array, num_elem*sizeof(uint32_t), cudaMemcpyHostToHost);
+    uint32_t* host_out_arr = (uint32_t*)malloc( num_elem * sizeof(uint32_t));
+    cudaMemcpy(host_out_arr, input_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToHost);
 
     for (uint64_t i = 0; i < sizeof(uint32_t) * 8; i += NUM_BITS) {
         // call make_histogram
@@ -137,7 +138,7 @@ double sortByKernel(T* input_array
         //);
         printf("making histos\n");
         seq_make_histogram(
-            output_array,
+            host_out_arr,
             num_elem,
             bit_offset,
             histograms,
@@ -201,7 +202,7 @@ double sortByKernel(T* input_array
         //);
         printf("scattering\n");
         T* tmp_output_array = (T*)malloc(num_elem * sizeof(T));
-        memcpy(tmp_output_array, output_array, num_elem * sizeof(T));
+        memcpy(tmp_output_array, host_out_arr, num_elem * sizeof(T));
         seq_scatter(
             histograms, // now mulit_scanned
             histograms_scanned,
@@ -210,7 +211,7 @@ double sortByKernel(T* input_array
             global_offsets,
             tmp_output_array,
             bit_offset,
-            output_array
+            host_out_arr
         );
     }
     gettimeofday(&t_end, NULL);

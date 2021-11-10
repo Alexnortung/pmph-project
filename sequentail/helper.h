@@ -34,8 +34,10 @@ void seq_make_histogram(T* input_array
         printf("setting %d to 0 in histograms\n", i);
         histograms[i] = 0;
     }
-
+    printf("input_array_size is: %d\n", input_arr_size);
+    printf("first item is: %d\n", input_array[0]);
     for (unsigned int i = 0; i < input_arr_size; i++) {
+        printf("index is: %d, item is: %d\n", i, input_array[i]);
         T item = input_array[i];
         uint32_t histogram_index = i / elements_per_histogram;
         uint32_t* histogram = &histograms[histogram_index * histogram_size];
