@@ -30,6 +30,15 @@ void printArray(T* array, U array_size) {
     printf("]\n");
 }
 
+template<class T, class U>
+void printCudaArray(T* cuda_array, U array_size) {
+    T* tmp_cpu = (T*)malloc(array_size * sizeof(T));
+    cudaMemcpy(tmp_cpu, cuda_array, array_size * sizeof(T), cudaMemcpyDeviceToHost);
+    printArray(tmp_cpu, array_size);
+    free(tmp_cpu);
+}
+
+
 int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
 {
   unsigned int resolution=1000000;
@@ -105,6 +114,22 @@ bool validate_arrays(T* output_array, T* correct_out_arr, U num_elems) {
         }
     }
     return true;
+}
+
+template<class T, class U>
+bool validate_cuda_cpu_arrays(T* cuda_array, T* cpu_array, U num_elems) {
+    T* temp_cpu = (T*)malloc(num_elems * sizeof(T));
+    cudaMemcpy(temp_cpu, cuda_array, num_elems * sizeof(T), cudaMemcpyDeviceToHost);
+    bool correct = true;
+    for(U i = 0; i < num_elems; i++){
+        if (fabs(temp_cpu[i] - cpu_array[i]) > 0.001) {
+            printf("INVALID RESULT for i:%d, (output[i]=%d != correct[i]=%d)\n", i, temp_cpu[i], cpu_array[i]);
+            correct = false;
+            break;
+        }
+    }
+    free(temp_cpu);
+    return correct;
 }
 
 

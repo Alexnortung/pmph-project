@@ -70,7 +70,7 @@ double sortByKernel(T* input_array
 
     size_t histogram_size = 1 << NUM_BITS;
 
-    unsigned int block_size_make_hist = 256;
+    unsigned int block_size_make_hist = 32;
     // get ceil of num_elem / ELEM_PER_THREAD_MAKE_HIST // total threads //
     //uint32_t num_threads_make_hist = num_elem; // num threads for make_histogram
     // get ceil of num_threads_make_hist / block_size_make_hist
@@ -140,15 +140,14 @@ double sortByKernel(T* input_array
         // call make_histogram
         uint64_t bit_offset = i;
         printf("making histos at bit_offset: %d\n", bit_offset);
-        //make_histogram<<< num_blocks_make_hist, block_size_make_hist, extern_shared_mem_make_hist >>>(
-        //    output_array,
-        //    num_elem,
-        //    bit_offset,
-        //    histograms
-        //);
-        //cudaMemcpy(host_out_arr, output_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToHost);
-        //cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        make_histogram<<< num_blocks_make_hist, block_size_make_hist >>>(
+            output_array,
+            num_elem,
+            bit_offset,
+            histograms
+        );
         cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+        //cudaMemcpy(histograms_cpu, histograms, all_histograms_size*sizeof(uint32_t), cudaMemcpyDeviceToHost);
         cudaMemcpy(host_out_arr, output_array, num_elem*sizeof(uint32_t), cudaMemcpyDeviceToHost);
         seq_make_histogram(
             host_out_arr,
@@ -158,7 +157,15 @@ double sortByKernel(T* input_array
             num_elem_per_histo,
             num_histograms
         );
-        cudaMemcpy(histograms, histograms_cpu, all_histograms_size*sizeof(uint32_t), cudaMemcpyHostToDevice);
+        //cudaMemcpy(histograms, histograms_cpu, all_histograms_size*sizeof(uint32_t), cudaMemcpyHostToDevice);
+        bool correct_make_hist = validate_cuda_cpu_arrays(histograms, histograms_cpu, all_histograms_size);
+        cudaDeviceSynchronize();
+        cudaCheckError();
+        if (!correct_make_hist) {
+            printCudaArray(histograms, 500);
+            printArray(histograms_cpu, 500);
+            break;
+        }
         printf("partitioning\n");
         // TODO: for loop for NUM_BITS
         //for (unsigned int i = 0; i < num_elem; i += num_elem_per_histo) {
@@ -249,6 +256,8 @@ double sortByKernel(T* input_array
         //cudaMemcpy(output_array, host_out_arr, num_elem * sizeof(T), cudaMemcpyHostToDevice);
         //printArray(host_out_arr, num_elem);
         printf("Done with iteration %d\n", i);
+        cudaDeviceSynchronize();
+        cudaCheckError();
     }
     cudaDeviceSynchronize();
     gettimeofday(&t_end, NULL);
